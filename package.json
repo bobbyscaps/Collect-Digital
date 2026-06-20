@@ -1,0 +1,64 @@
+{
+  "name": "collect-digital",
+  "version": "1.0.0",
+  "description": "NFT project intelligence and wallet evaluation platform",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bobbyscaps/Collect-Digital.git"
+  },
+  "keywords": [
+    "nft",
+    "analytics",
+    "opensea",
+    "supabase",
+    "nextjs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bobbyscaps/Collect-Digital/issues"
+  },
+  "homepage": "https://github.com/bobbyscaps/Collect-Digital#readme",
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@radix-ui/react-slot": "^1.3.0",
+    "@rainbow-me/rainbowkit": "^2.2.11",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.108.2",
+    "@tanstack/react-query": "^5.101.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.21.0",
+    "next": "^15.5.19",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^3.8.1",
+    "stripe": "^22.2.2",
+    "tailwind-merge": "^3.6.0",
+    "viem": "^2.53.1",
+    "wagmi": "^2.19.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "autoprefixer": "^10.5.0",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^15.5.19",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.3"
+  }
+}
