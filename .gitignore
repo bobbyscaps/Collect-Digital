@@ -9,4 +9,5 @@ dist
 .env.production.local
 coverage
 *.log
+*.tsbuildinfo
 supabase/.temp

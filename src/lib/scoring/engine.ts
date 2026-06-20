@@ -66,8 +66,8 @@ function collectRawMetric(
   evaluation: CollectionEvaluation,
   metricPath: string
 ): number | boolean | undefined | null {
-  const marketData = evaluation.marketSnapshot as Record<string, unknown>;
-  const profileData = evaluation.profile as Record<string, unknown>;
+  const marketData = evaluation.marketSnapshot as unknown as Record<string, unknown>;
+  const profileData = evaluation.profile as unknown as Record<string, unknown>;
   const derivedData: Record<string, number> = {
     yearsActive: evaluation.profile.foundedAt
       ? (Date.now() - new Date(evaluation.profile.foundedAt).getTime()) /
