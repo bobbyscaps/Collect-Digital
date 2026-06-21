@@ -128,9 +128,9 @@ export function CollectionSearch() {
                 <Link
                   key={item.slug}
                   href={`/collections/${item.slug}`}
-                  className="flex items-center justify-between rounded-md p-2 text-sm transition hover:bg-accent"
+                  className="flex items-center justify-between gap-3 rounded-md p-2 text-sm transition hover:bg-accent"
                 >
-                  <span className="flex items-center gap-2">
+                  <span className="flex min-w-0 items-center gap-2">
                     {item.imageUrl ? (
                       <img
                         src={item.imageUrl}
@@ -138,9 +138,18 @@ export function CollectionSearch() {
                         className="h-6 w-6 rounded-full object-cover"
                       />
                     ) : null}
-                    {item.name}
+                    <span className="truncate">{item.name}</span>
                   </span>
-                  <span className="text-muted-foreground">{item.slug}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {typeof item.baseScore === "number" ? (
+                      <span className="rounded-full border px-2 py-0.5 text-xs font-medium">
+                        Base {item.baseScore}
+                      </span>
+                    ) : null}
+                    <span className="max-w-36 truncate text-xs text-muted-foreground">
+                      {item.slug}
+                    </span>
+                  </span>
                 </Link>
               ))}
             </div>

@@ -17,14 +17,107 @@ import type {
 } from "@/providers/types";
 
 const LIVE_TRENDING_LIMIT = 18;
-const LIVE_SEARCH_LIMIT = 15;
+const LIVE_SEARCH_LIMIT = 30;
 const DEFAULT_CHAIN = "ethereum";
 
-function toProfile(collection: NormalizedCollection): CollectionProfile {
+function normalizeSearchValue(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function toSlug(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+function looksLikeContractAddress(value: string) {
+  return /^0x[a-f0-9]{40}$/i.test(value.trim());
+}
+
+function collectionDataWeight(collection: NormalizedCollection) {
+  let score = 0;
+  if (collection.image) score += 2;
+  if (collection.metadata.bannerImage) score += 1;
+  if (collection.metadata.description) score += 1;
+  if (collection.floor > 0) score += 2;
+  if (collection.holders > 0) score += 1;
+  if (collection.volume > 0) score += 2;
+  return score;
+}
+
+function mergeCollectionCandidates(
+  current: NormalizedCollection,
+  incoming: NormalizedCollection
+): NormalizedCollection {
+  const preferred =
+    collectionDataWeight(incoming) > collectionDataWeight(current)
+      ? incoming
+      : current;
+  const secondary = preferred === incoming ? current : incoming;
+
+  return {
+    ...preferred,
+    floor: Math.max(preferred.floor, secondary.floor),
+    topOffer: Math.max(preferred.topOffer, secondary.topOffer),
+    holders: Math.max(preferred.holders, secondary.holders),
+    sales: Math.max(preferred.sales, secondary.sales),
+    liquidity: Math.max(preferred.liquidity, secondary.liquidity),
+    listedPercent: Math.max(preferred.listedPercent, secondary.listedPercent),
+    volume: Math.max(preferred.volume, secondary.volume),
+    metadata: {
+      ...secondary.metadata,
+      ...preferred.metadata,
+      description: preferred.metadata.description || secondary.metadata.description,
+      bannerImage: preferred.metadata.bannerImage || secondary.metadata.bannerImage,
+      website: preferred.metadata.website || secondary.metadata.website,
+      xUrl: preferred.metadata.xUrl || secondary.metadata.xUrl,
+      discordUrl: preferred.metadata.discordUrl || secondary.metadata.discordUrl,
+      telegramUrl: preferred.metadata.telegramUrl || secondary.metadata.telegramUrl,
+      openseaUrl: preferred.metadata.openseaUrl || secondary.metadata.openseaUrl,
+      contractAddress:
+        preferred.metadata.contractAddress || secondary.metadata.contractAddress,
+      chain: preferred.metadata.chain || secondary.metadata.chain,
+    },
+  };
+}
+
+function searchRankScore(
+  collection: NormalizedCollection,
+  normalizedQuery: string
+) {
+  const normalizedName = normalizeSearchValue(collection.name);
+  const normalizedSlug = normalizeSearchValue(collection.slug);
+  let score = 0;
+
+  if (normalizedName === normalizedQuery || normalizedSlug === normalizedQuery) {
+    score += 120;
+  } else if (
+    normalizedName.startsWith(normalizedQuery) ||
+    normalizedSlug.startsWith(normalizedQuery)
+  ) {
+    score += 80;
+  } else if (
+    normalizedName.includes(normalizedQuery) ||
+    normalizedSlug.includes(normalizedQuery)
+  ) {
+    score += 40;
+  }
+
+  score += Math.min(20, Math.log10(1 + Math.max(collection.volume, 0)) * 4);
+  score += Math.min(15, collection.holders / 1000);
+  score += Math.min(10, collection.floor);
+  score += collection.provider === "reservoir" ? 3 : 0;
+
+  return score;
+}
+
+function toProfile(
+  collection: NormalizedCollection,
+  baseScore?: number
+): CollectionProfile {
   return {
     slug: collection.slug,
     name: collection.name,
     imageUrl: collection.image,
+    baseScore,
     bannerUrl: collection.metadata.bannerImage ?? null,
     description: collection.metadata.description ?? null,
     contractAddress: collection.metadata.contractAddress ?? null,
@@ -90,6 +183,11 @@ function toEvaluation(
   return evaluation;
 }
 
+function toProfileWithBaseScore(collection: NormalizedCollection) {
+  const evaluation = toEvaluation(collection);
+  return toProfile(collection, Math.round(evaluation.score.overallScore));
+}
+
 async function buildSeededCollections(
   reservoir: ReservoirProvider,
   limit: number
@@ -145,14 +243,15 @@ class NftDataService {
   }
 
   async searchCollections(query: string) {
-    const normalizedQuery = query.toLowerCase();
-    if (!normalizedQuery.trim()) {
+    const normalizedQuery = normalizeSearchValue(query);
+
+    if (!normalizedQuery) {
       const seeded = await buildSeededCollections(this.reservoir, 8);
       if (seeded.length) {
         const enrichedSeeded = await Promise.all(
           seeded.map((collection) => this.enrichCollection(collection))
         );
-        return enrichedSeeded.map(toProfile);
+        return enrichedSeeded.map(toProfileWithBaseScore);
       }
 
       const supplementalSettled = await Promise.allSettled(
@@ -169,87 +268,125 @@ class NftDataService {
         .filter((item): item is NormalizedCollection => Boolean(item));
 
       if (supplementalCollections.length) {
-        return supplementalCollections.map(toProfile);
+        return supplementalCollections.map(toProfileWithBaseScore);
       }
 
-      return MOCK_COLLECTIONS.slice(0, 8).map((item) => item.profile);
-    }
-
-    const reservoirResults = await this.reservoir.searchCollections(query, {
-      limit: LIVE_SEARCH_LIMIT,
-    });
-
-    if (reservoirResults.length) {
-      const enriched = await Promise.all(
-        reservoirResults.map((collection) => this.enrichCollection(collection))
-      );
-      return enriched.map(toProfile);
-    }
-
-    const matchingSeeds = TOP_COLLECTION_SEEDS.filter(
-      (seed) =>
-        seed.slug.toLowerCase().includes(normalizedQuery) ||
-        seed.name.toLowerCase().includes(normalizedQuery)
-    ).slice(0, LIVE_SEARCH_LIMIT);
-
-    if (matchingSeeds.length) {
-      const settled = await Promise.allSettled(
-        matchingSeeds.map((seed) => this.reservoir.getCollection(seed.slug))
-      );
-      const results = settled
-        .filter(
-          (item): item is PromiseFulfilledResult<NormalizedCollection | null> =>
-            item.status === "fulfilled"
-        )
-        .map((item) => item.value)
-        .filter((item): item is NormalizedCollection => Boolean(item));
-      if (results.length) {
-        return results.map(toProfile);
-      }
-
-      const supplementalSettled = await Promise.allSettled(
-        matchingSeeds.map((seed) => this.opensea.getCollection(seed.slug))
-      );
-      const supplementalResults = supplementalSettled
-        .filter(
-          (item): item is PromiseFulfilledResult<NormalizedCollection | null> =>
-            item.status === "fulfilled"
-        )
-        .map((item) => item.value)
-        .filter((item): item is NormalizedCollection => Boolean(item));
-      if (supplementalResults.length) {
-        return supplementalResults.map(toProfile);
-      }
-
-      return matchingSeeds.map((seed) => ({
-        slug: seed.slug,
-        name: seed.name,
-        imageUrl: "",
-        bannerUrl: null,
-        description: null,
-        contractAddress: null,
-        chain: DEFAULT_CHAIN,
-        openseaUrl: `https://opensea.io/collection/${seed.slug}`,
-        officialWebsite: null,
-        xUrl: null,
-        discordUrl: null,
-        telegramUrl: null,
-        foundedAt: null,
-        founderNames: [],
-        verified: false,
-        claimed: false,
-        hasToken: false,
-        hasRewardPlatform: false,
-        hasIrlEvents: false,
-        hasBusinessRevenue: false,
-        hasDevFounder: false,
-        dataConfidenceLevel: "auto_generated" as const,
+      return MOCK_COLLECTIONS.slice(0, 8).map((item) => ({
+        ...item.profile,
+        baseScore: Math.round(item.score.overallScore),
       }));
     }
 
-    return MOCK_COLLECTIONS.filter((item) =>
-      item.profile.name.toLowerCase().includes(normalizedQuery)
-    ).map((item) => item.profile);
+    const [reservoirResults, openseaSearchResults] = await Promise.all([
+      this.reservoir.searchCollections(query, {
+        limit: LIVE_SEARCH_LIMIT,
+      }),
+      this.opensea.searchCollections(query, {
+        limit: LIVE_SEARCH_LIMIT,
+      }),
+    ]);
+
+    const openSeaHydratedSettled = await Promise.allSettled(
+      openseaSearchResults
+        .slice(0, 12)
+        .map((collection) => this.opensea.getCollection(collection.slug))
+    );
+    const openSeaHydrated = openSeaHydratedSettled
+      .filter(
+        (item): item is PromiseFulfilledResult<NormalizedCollection | null> =>
+          item.status === "fulfilled"
+      )
+      .map((item) => item.value)
+      .filter((item): item is NormalizedCollection => Boolean(item));
+
+    const exactCandidates = [query, normalizedQuery, toSlug(query)];
+    const exactLookups = await Promise.allSettled(
+      exactCandidates.flatMap((candidate) => [
+        this.reservoir.getCollection(candidate),
+        this.opensea.getCollection(candidate),
+      ])
+    );
+    const exactCollections = exactLookups
+      .filter(
+        (item): item is PromiseFulfilledResult<NormalizedCollection | null> =>
+          item.status === "fulfilled"
+      )
+      .map((item) => item.value)
+      .filter((item): item is NormalizedCollection => Boolean(item));
+
+    if (looksLikeContractAddress(query)) {
+      const contractLookups = await Promise.allSettled([
+        this.reservoir.getCollection(query.toLowerCase()),
+        this.opensea.getCollection(query.toLowerCase()),
+      ]);
+      for (const item of contractLookups) {
+        if (item.status === "fulfilled" && item.value) {
+          exactCollections.push(item.value);
+        }
+      }
+    }
+
+    const candidateMap = new Map<string, NormalizedCollection>();
+    const allCandidates = [
+      ...reservoirResults,
+      ...openSeaHydrated,
+      ...openseaSearchResults,
+      ...exactCollections,
+    ];
+    for (const candidate of allCandidates) {
+      const key = normalizeSearchValue(candidate.slug || candidate.id);
+      const existing = candidateMap.get(key);
+      if (!existing) {
+        candidateMap.set(key, candidate);
+        continue;
+      }
+      candidateMap.set(key, mergeCollectionCandidates(existing, candidate));
+    }
+
+    let mergedCandidates = Array.from(candidateMap.values());
+
+    if (!mergedCandidates.length) {
+      const matchingSeeds = TOP_COLLECTION_SEEDS.filter(
+        (seed) =>
+          normalizeSearchValue(seed.slug).includes(normalizedQuery) ||
+          normalizeSearchValue(seed.name).includes(normalizedQuery)
+      ).slice(0, LIVE_SEARCH_LIMIT);
+
+      if (!matchingSeeds.length) {
+        return MOCK_COLLECTIONS.filter((item) =>
+          normalizeSearchValue(item.profile.name).includes(normalizedQuery)
+        ).map((item) => ({
+          ...item.profile,
+          baseScore: Math.round(item.score.overallScore),
+        }));
+      }
+
+      const seedCollectionsSettled = await Promise.allSettled(
+        matchingSeeds.map((seed) => this.reservoir.getCollection(seed.slug))
+      );
+      mergedCandidates = seedCollectionsSettled
+        .filter(
+          (item): item is PromiseFulfilledResult<NormalizedCollection | null> =>
+            item.status === "fulfilled"
+        )
+        .map((item) => item.value)
+        .filter((item): item is NormalizedCollection => Boolean(item));
+    }
+
+    const enrichedCandidates = await Promise.all(
+      mergedCandidates.map((collection) => this.enrichCollection(collection))
+    );
+
+    const ranked = enrichedCandidates
+      .map((collection) => ({
+        collection,
+        rank: searchRankScore(collection, normalizedQuery),
+      }))
+      .sort((a, b) => b.rank - a.rank)
+      .slice(0, LIVE_SEARCH_LIMIT)
+      .map((item) => item.collection);
+
+    return ranked.map(toProfileWithBaseScore);
   }
 
   async getTrendingCollections() {

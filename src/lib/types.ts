@@ -60,6 +60,7 @@ export interface CollectionProfile {
   slug: string;
   name: string;
   imageUrl: string;
+  baseScore?: number;
   bannerUrl?: string | null;
   description?: string | null;
   contractAddress?: string | null;
