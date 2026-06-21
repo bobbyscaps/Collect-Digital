@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { ArrowUpRight, Sparkles } from "lucide-react";
+/* eslint-disable @next/next/no-img-element */
 
 import { CollectionSearch } from "@/components/home/collection-search";
 import { ScoreRing } from "@/components/score/score-ring";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { env } from "@/lib/env";
 import { MOCK_UPGRADE_CAMPAIGNS } from "@/lib/mock-data";
 import { getTrendingCollections } from "@/lib/opensea/service";
 
 export default async function HomePage() {
+  const hasOpenSeaKey = Boolean(env.OPENSEA_API_KEY);
   const trending = await getTrendingCollections();
   const topScores = [...trending]
     .sort((a, b) => b.score.overallScore - a.score.overallScore)
@@ -51,6 +54,12 @@ export default async function HomePage() {
             <CardTitle>Collection search</CardTitle>
           </CardHeader>
           <CardContent>
+            {!hasOpenSeaKey ? (
+              <p className="mb-3 text-xs text-muted-foreground">
+                Add `OPENSEA_API_KEY` in `.env.local` to load the full OpenSea top
+                collection universe and live images/metrics.
+              </p>
+            ) : null}
             <CollectionSearch />
           </CardContent>
         </Card>
@@ -68,12 +77,21 @@ export default async function HomePage() {
                 href={`/collections/${project.profile.slug}`}
                 className="flex items-center justify-between rounded-lg border p-3 transition hover:bg-accent"
               >
-                <div>
-                  <p className="font-medium">{project.profile.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Floor {project.marketSnapshot.floorPriceEth.toFixed(2)} ETH ·{" "}
-                    {project.marketSnapshot.floorChange24hPct.toFixed(1)}% 24h
-                  </p>
+                <div className="flex items-center gap-3">
+                  {project.profile.imageUrl ? (
+                    <img
+                      src={project.profile.imageUrl}
+                      alt={project.profile.name}
+                      className="h-10 w-10 rounded-full object-cover"
+                    />
+                  ) : null}
+                  <div>
+                    <p className="font-medium">{project.profile.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Floor {project.marketSnapshot.floorPriceEth.toFixed(2)} ETH ·{" "}
+                      {project.marketSnapshot.floorChange24hPct.toFixed(1)}% 24h
+                    </p>
+                  </div>
                 </div>
                 <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
               </Link>
@@ -114,6 +132,13 @@ export default async function HomePage() {
                 key={collection.profile.slug}
                 className="rounded-lg border p-4 transition hover:bg-accent"
               >
+                {collection.profile.imageUrl ? (
+                  <img
+                    src={collection.profile.imageUrl}
+                    alt={collection.profile.name}
+                    className="mx-auto mb-3 h-10 w-10 rounded-full object-cover"
+                  />
+                ) : null}
                 <ScoreRing score={collection.score.overallScore} label={collection.profile.name} />
               </Link>
             ))}

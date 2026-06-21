@@ -1,6 +1,7 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 
@@ -12,6 +13,7 @@ export function CollectionSearch() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CollectionProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const latestRequestRef = useRef(0);
 
   async function onSearch(nextQuery: string) {
     setQuery(nextQuery);
@@ -20,9 +22,14 @@ export function CollectionSearch() {
       return;
     }
 
+    const requestId = latestRequestRef.current + 1;
+    latestRequestRef.current = requestId;
     setLoading(true);
     const response = await fetch(`/api/collections/search?q=${encodeURIComponent(nextQuery)}`);
     const data = (await response.json()) as { collections: CollectionProfile[] };
+    if (latestRequestRef.current !== requestId) {
+      return;
+    }
     setResults(data.collections);
     setLoading(false);
   }
@@ -51,7 +58,16 @@ export function CollectionSearch() {
                   href={`/collections/${item.slug}`}
                   className="flex items-center justify-between rounded-md p-2 text-sm transition hover:bg-accent"
                 >
-                  <span>{item.name}</span>
+                  <span className="flex items-center gap-2">
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt={item.name}
+                        className="h-6 w-6 rounded-full object-cover"
+                      />
+                    ) : null}
+                    {item.name}
+                  </span>
                   <span className="text-muted-foreground">{item.slug}</span>
                 </Link>
               ))}

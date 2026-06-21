@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
+/* eslint-disable @next/next/no-img-element */
 
 import { FloorChart } from "@/components/collection/floor-chart";
 import { WikiEditor } from "@/components/collection/wiki-editor";
@@ -29,9 +30,23 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
 
   return (
     <div className="space-y-8">
+      {profile.bannerUrl ? (
+        <img
+          src={profile.bannerUrl}
+          alt={`${profile.name} banner`}
+          className="h-44 w-full rounded-xl border object-cover"
+        />
+      ) : null}
       <section className="grid gap-6 rounded-xl border p-6 lg:grid-cols-[2fr_1fr]">
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            {profile.imageUrl ? (
+              <img
+                src={profile.imageUrl}
+                alt={profile.name}
+                className="h-12 w-12 rounded-full object-cover"
+              />
+            ) : null}
             <h1 className="text-3xl font-bold">{profile.name}</h1>
             <Badge variant="outline">{profile.dataConfidenceLevel}</Badge>
             {profile.claimed ? <Badge>Claimed</Badge> : null}
