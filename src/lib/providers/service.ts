@@ -14,8 +14,6 @@ import type {
 import { env } from "@/lib/env";
 import type {
   NormalizedCollection,
-  NormalizedOffer,
-  NormalizedSale,
 } from "@/providers/types";
 
 const LIVE_TRENDING_LIMIT = 18;
@@ -179,6 +177,45 @@ class NftDataService {
       if (results.length) {
         return results.map(toProfile);
       }
+
+      const supplementalSettled = await Promise.allSettled(
+        matchingSeeds.map((seed) => this.opensea.getCollection(seed.slug))
+      );
+      const supplementalResults = supplementalSettled
+        .filter(
+          (item): item is PromiseFulfilledResult<NormalizedCollection | null> =>
+            item.status === "fulfilled"
+        )
+        .map((item) => item.value)
+        .filter((item): item is NormalizedCollection => Boolean(item));
+      if (supplementalResults.length) {
+        return supplementalResults.map(toProfile);
+      }
+
+      return matchingSeeds.map((seed) => ({
+        slug: seed.slug,
+        name: seed.name,
+        imageUrl: "",
+        bannerUrl: null,
+        description: null,
+        contractAddress: null,
+        chain: DEFAULT_CHAIN,
+        openseaUrl: `https://opensea.io/collection/${seed.slug}`,
+        officialWebsite: null,
+        xUrl: null,
+        discordUrl: null,
+        telegramUrl: null,
+        foundedAt: null,
+        founderNames: [],
+        verified: false,
+        claimed: false,
+        hasToken: false,
+        hasRewardPlatform: false,
+        hasIrlEvents: false,
+        hasBusinessRevenue: false,
+        hasDevFounder: false,
+        dataConfidenceLevel: "auto_generated" as const,
+      }));
     }
 
     return MOCK_COLLECTIONS.filter((item) =>
@@ -189,6 +226,21 @@ class NftDataService {
   async getTrendingCollections() {
     const seeded = await buildSeededCollections(this.reservoir, LIVE_TRENDING_LIMIT);
     if (!seeded.length) {
+      const supplementalSettled = await Promise.allSettled(
+        TOP_COLLECTION_SEEDS.slice(0, LIVE_TRENDING_LIMIT).map((seed) =>
+          this.opensea.getCollection(seed.slug)
+        )
+      );
+      const supplemental = supplementalSettled
+        .filter(
+          (item): item is PromiseFulfilledResult<NormalizedCollection | null> =>
+            item.status === "fulfilled"
+        )
+        .map((item) => item.value)
+        .filter((item): item is NormalizedCollection => Boolean(item));
+      if (supplemental.length) {
+        return supplemental.map((collection) => toEvaluation(collection));
+      }
       return MOCK_COLLECTIONS;
     }
 

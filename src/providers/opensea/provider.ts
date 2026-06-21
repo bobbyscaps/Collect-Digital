@@ -44,28 +44,25 @@ export class OpenSeaProvider implements NftDataProvider {
   async getCollection(collectionId: string): Promise<NormalizedCollection | null> {
     try {
       type Response = {
-        collection: {
-          collection?: string;
-          name: string;
-          image_url?: string;
-          description?: string;
-          banner_image_url?: string;
-          project_url?: string;
-          twitter_username?: string;
-          discord_url?: string;
-          telegram_url?: string;
-          opensea_url?: string;
-          contracts?: { address: string; chain: string }[];
-        };
+        collection?: string;
+        name?: string;
+        image_url?: string;
+        description?: string;
+        banner_image_url?: string;
+        project_url?: string;
+        twitter_username?: string;
+        discord_url?: string;
+        telegram_url?: string;
+        opensea_url?: string;
+        contracts?: { address: string; chain: string }[];
       };
       const data = await this.fetchJson<Response>(`/collections/${collectionId}`);
-      const c = data.collection;
-      const slug = c.collection ?? collectionId;
+      const slug = data.collection ?? collectionId;
       return {
         id: slug,
         slug,
-        name: c.name,
-        image: c.image_url ?? "",
+        name: data.name ?? slug,
+        image: data.image_url ?? "",
         floor: 0,
         topOffer: 0,
         holders: 0,
@@ -74,15 +71,15 @@ export class OpenSeaProvider implements NftDataProvider {
         listedPercent: 0,
         volume: 0,
         metadata: {
-          description: c.description ?? null,
-          bannerImage: c.banner_image_url ?? null,
-          website: c.project_url ?? null,
-          xUrl: c.twitter_username ? `https://x.com/${c.twitter_username}` : null,
-          discordUrl: c.discord_url ?? null,
-          telegramUrl: c.telegram_url ?? null,
-          openseaUrl: c.opensea_url ?? `https://opensea.io/collection/${slug}`,
-          contractAddress: c.contracts?.[0]?.address ?? null,
-          chain: c.contracts?.[0]?.chain ?? "ethereum",
+          description: data.description ?? null,
+          bannerImage: data.banner_image_url ?? null,
+          website: data.project_url ?? null,
+          xUrl: data.twitter_username ? `https://x.com/${data.twitter_username}` : null,
+          discordUrl: data.discord_url ?? null,
+          telegramUrl: data.telegram_url ?? null,
+          openseaUrl: data.opensea_url ?? `https://opensea.io/collection/${slug}`,
+          contractAddress: data.contracts?.[0]?.address ?? null,
+          chain: data.contracts?.[0]?.chain ?? "ethereum",
         },
         provider: "opensea",
       };
