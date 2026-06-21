@@ -3,6 +3,7 @@ import { ArrowUpRight, Sparkles } from "lucide-react";
 /* eslint-disable @next/next/no-img-element */
 
 import { CollectionSearch } from "@/components/home/collection-search";
+import { TopProjectsScroller } from "@/components/home/top-projects-scroller";
 import { ScoreRing } from "@/components/score/score-ring";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,12 @@ export default async function HomePage() {
         Math.abs(a.marketSnapshot.floorChange24hPct)
     )
     .slice(0, 3);
+  const scrollerProjects = trending.slice(0, 10).map((project) => ({
+    slug: project.profile.slug,
+    name: project.profile.name,
+    imageUrl: project.profile.imageUrl,
+    floorPriceEth: project.marketSnapshot.floorPriceEth,
+  }));
 
   return (
     <div className="space-y-8">
@@ -58,6 +65,17 @@ export default async function HomePage() {
               enrichment only.
             </p>
             <CollectionSearch />
+          </CardContent>
+        </Card>
+      </section>
+
+      <section>
+        <Card>
+          <CardHeader>
+            <CardTitle>Top projects live feed</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TopProjectsScroller projects={scrollerProjects} />
           </CardContent>
         </Card>
       </section>

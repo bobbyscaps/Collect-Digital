@@ -146,6 +146,35 @@ class NftDataService {
 
   async searchCollections(query: string) {
     const normalizedQuery = query.toLowerCase();
+    if (!normalizedQuery.trim()) {
+      const seeded = await buildSeededCollections(this.reservoir, 8);
+      if (seeded.length) {
+        const enrichedSeeded = await Promise.all(
+          seeded.map((collection) => this.enrichCollection(collection))
+        );
+        return enrichedSeeded.map(toProfile);
+      }
+
+      const supplementalSettled = await Promise.allSettled(
+        TOP_COLLECTION_SEEDS.slice(0, 8).map((seed) =>
+          this.opensea.getCollection(seed.slug)
+        )
+      );
+      const supplementalCollections = supplementalSettled
+        .filter(
+          (item): item is PromiseFulfilledResult<NormalizedCollection | null> =>
+            item.status === "fulfilled"
+        )
+        .map((item) => item.value)
+        .filter((item): item is NormalizedCollection => Boolean(item));
+
+      if (supplementalCollections.length) {
+        return supplementalCollections.map(toProfile);
+      }
+
+      return MOCK_COLLECTIONS.slice(0, 8).map((item) => item.profile);
+    }
+
     const reservoirResults = await this.reservoir.searchCollections(query, {
       limit: LIVE_SEARCH_LIMIT,
     });

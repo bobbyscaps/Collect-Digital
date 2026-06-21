@@ -56,20 +56,39 @@ export class OpenSeaProvider implements NftDataProvider {
         opensea_url?: string;
         contracts?: { address: string; chain: string }[];
       };
-      const data = await this.fetchJson<Response>(`/collections/${collectionId}`);
+      type StatsResponse = {
+        total?: {
+          volume?: number;
+          sales?: number;
+          num_owners?: number;
+          floor_price?: number;
+        };
+      };
+      const [dataResult, statsResult] = await Promise.allSettled([
+        this.fetchJson<Response>(`/collections/${collectionId}`),
+        this.fetchJson<StatsResponse>(`/collections/${collectionId}/stats`),
+      ]);
+
+      if (dataResult.status !== "fulfilled") {
+        return null;
+      }
+
+      const data = dataResult.value;
+      const stats =
+        statsResult.status === "fulfilled" ? statsResult.value.total : undefined;
       const slug = data.collection ?? collectionId;
       return {
         id: slug,
         slug,
         name: data.name ?? slug,
         image: data.image_url ?? "",
-        floor: 0,
-        topOffer: 0,
-        holders: 0,
-        sales: 0,
-        liquidity: 0,
+        floor: Number(stats?.floor_price ?? 0),
+        topOffer: Number(stats?.floor_price ?? 0) * 0.9,
+        holders: Number(stats?.num_owners ?? 0),
+        sales: Number(stats?.sales ?? 0),
+        liquidity: Number(stats?.floor_price ?? 0) * Math.max(Number(stats?.sales ?? 0), 1),
         listedPercent: 0,
-        volume: 0,
+        volume: Number(stats?.volume ?? 0),
         metadata: {
           description: data.description ?? null,
           bannerImage: data.banner_image_url ?? null,

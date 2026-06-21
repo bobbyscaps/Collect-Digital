@@ -52,3 +52,20 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+@keyframes top-projects-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.top-projects-marquee {
+  animation: top-projects-marquee 45s linear infinite;
+}
+
+.top-projects-track:hover .top-projects-marquee {
+  animation-play-state: paused;
+}

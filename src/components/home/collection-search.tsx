@@ -11,10 +11,37 @@ import type { CollectionProfile } from "@/lib/types";
 
 export function CollectionSearch() {
   const [query, setQuery] = useState("");
+  const [defaultCollections, setDefaultCollections] = useState<CollectionProfile[]>([]);
   const [results, setResults] = useState<CollectionProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const latestRequestRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadDefaults() {
+      try {
+        const response = await fetch("/api/collections/search?q=");
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { collections: CollectionProfile[] };
+        if (!active) {
+          return;
+        }
+        setDefaultCollections(data.collections.slice(0, 8));
+      } catch {
+        // Non-blocking: default list is best-effort only.
+      }
+    }
+
+    void loadDefaults();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const nextQuery = query.trim();
@@ -22,6 +49,7 @@ export function CollectionSearch() {
       setResults([]);
       setError(null);
       setLoading(false);
+      abortRef.current?.abort();
       return;
     }
 
@@ -32,8 +60,12 @@ export function CollectionSearch() {
       setError(null);
 
       try {
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
         const response = await fetch(
-          `/api/collections/search?q=${encodeURIComponent(nextQuery)}`
+          `/api/collections/search?q=${encodeURIComponent(nextQuery)}`,
+          { signal: controller.signal }
         );
         if (!response.ok) {
           throw new Error(`Search failed with status ${response.status}`);
@@ -45,7 +77,10 @@ export function CollectionSearch() {
         }
 
         setResults(data.collections);
-      } catch {
+      } catch (searchError) {
+        if ((searchError as { name?: string }).name === "AbortError") {
+          return;
+        }
         if (latestRequestRef.current !== requestId) {
           return;
         }
@@ -61,6 +96,8 @@ export function CollectionSearch() {
 
     return () => clearTimeout(debounce);
   }, [query]);
+
+  const displayResults = query.trim() ? results : defaultCollections;
 
   return (
     <div className="space-y-3">
@@ -79,12 +116,15 @@ export function CollectionSearch() {
       {!loading && !error && query.trim() && results.length === 0 ? (
         <p className="text-sm text-muted-foreground">No matching collections found yet.</p>
       ) : null}
+      {!loading && !query.trim() && defaultCollections.length > 0 ? (
+        <p className="text-sm text-muted-foreground">Top collections ready to explore.</p>
+      ) : null}
 
-      {results.length > 0 ? (
+      {displayResults.length > 0 ? (
         <Card>
           <CardContent className="p-3">
             <div className="space-y-2">
-              {results.map((item) => (
+              {displayResults.map((item) => (
                 <Link
                   key={item.slug}
                   href={`/collections/${item.slug}`}
