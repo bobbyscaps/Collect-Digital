@@ -14,6 +14,10 @@ import type {
 const OPENSEA_BASE_URL = "https://api.opensea.io/api/v2";
 const CACHE_TTL_MS = 1000 * 60 * 15;
 
+function looksLikeContractAddress(value: string) {
+  return /^0x[a-f0-9]{40}$/i.test(value.trim());
+}
+
 export class OpenSeaProvider implements NftDataProvider {
   readonly name = "opensea" as const;
 
@@ -41,8 +45,41 @@ export class OpenSeaProvider implements NftDataProvider {
     return data;
   }
 
+  private async resolveCollectionFromContract(
+    contractAddress: string
+  ): Promise<string | null> {
+    try {
+      type Response = {
+        nfts?: {
+          collection?: string | { slug?: string };
+        }[];
+      };
+      const data = await this.fetchJson<Response>(
+        `/chain/ethereum/contract/${contractAddress}/nfts?limit=1`
+      );
+      const firstNft = data.nfts?.[0];
+      if (!firstNft?.collection) {
+        return null;
+      }
+      if (typeof firstNft.collection === "string") {
+        return firstNft.collection;
+      }
+      return firstNft.collection.slug ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async getCollection(collectionId: string): Promise<NormalizedCollection | null> {
     try {
+      let lookupId = collectionId.trim();
+      if (looksLikeContractAddress(lookupId)) {
+        const resolved = await this.resolveCollectionFromContract(lookupId);
+        if (resolved) {
+          lookupId = resolved;
+        }
+      }
+
       type Response = {
         collection?: string;
         name?: string;
@@ -65,8 +102,8 @@ export class OpenSeaProvider implements NftDataProvider {
         };
       };
       const [dataResult, statsResult] = await Promise.allSettled([
-        this.fetchJson<Response>(`/collections/${collectionId}`),
-        this.fetchJson<StatsResponse>(`/collections/${collectionId}/stats`),
+        this.fetchJson<Response>(`/collections/${lookupId}`),
+        this.fetchJson<StatsResponse>(`/collections/${lookupId}/stats`),
       ]);
 
       if (dataResult.status !== "fulfilled") {
@@ -76,7 +113,7 @@ export class OpenSeaProvider implements NftDataProvider {
       const data = dataResult.value;
       const stats =
         statsResult.status === "fulfilled" ? statsResult.value.total : undefined;
-      const slug = data.collection ?? collectionId;
+      const slug = data.collection ?? lookupId;
       return {
         id: slug,
         slug,

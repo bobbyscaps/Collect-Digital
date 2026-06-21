@@ -14,6 +14,10 @@ import type {
 const RESERVOIR_BASE_URL = "https://api.reservoir.tools";
 const CACHE_TTL_MS = 1000 * 60 * 15;
 
+function looksLikeContractAddress(value: string) {
+  return /^0x[a-f0-9]{40}$/i.test(value.trim());
+}
+
 function toEth(value: unknown): number {
   if (typeof value === "number") {
     return value;
@@ -117,6 +121,14 @@ export class ReservoirProvider implements NftDataProvider {
       if (!data.collections?.length) {
         data = await this.fetchJson<Response>(
           `/collections/v7?slug=${encodeURIComponent(collectionId)}&includeTopBid=true`
+        );
+      }
+
+      if (!data.collections?.length && looksLikeContractAddress(collectionId)) {
+        data = await this.fetchJson<Response>(
+          `/collections/v7?contract=${encodeURIComponent(
+            collectionId
+          )}&includeTopBid=true`
         );
       }
 

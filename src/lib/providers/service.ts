@@ -109,6 +109,34 @@ function searchRankScore(
   return score;
 }
 
+function buildSeedFallbackProfile(seed: { slug: string; name: string }): CollectionProfile {
+  return {
+    slug: seed.slug,
+    name: seed.name,
+    imageUrl: "",
+    baseScore: Math.round(MOCK_COLLECTIONS[0].score.overallScore),
+    bannerUrl: null,
+    description: null,
+    contractAddress: null,
+    chain: DEFAULT_CHAIN,
+    openseaUrl: `https://opensea.io/collection/${seed.slug}`,
+    officialWebsite: null,
+    xUrl: null,
+    discordUrl: null,
+    telegramUrl: null,
+    foundedAt: null,
+    founderNames: [],
+    verified: false,
+    claimed: false,
+    hasToken: false,
+    hasRewardPlatform: false,
+    hasIrlEvents: false,
+    hasBusinessRevenue: false,
+    hasDevFounder: false,
+    dataConfidenceLevel: "auto_generated",
+  };
+}
+
 function toProfile(
   collection: NormalizedCollection,
   baseScore?: number
@@ -362,7 +390,10 @@ class NftDataService {
       }
 
       const seedCollectionsSettled = await Promise.allSettled(
-        matchingSeeds.map((seed) => this.reservoir.getCollection(seed.slug))
+        matchingSeeds.flatMap((seed) => [
+          this.reservoir.getCollection(seed.slug),
+          this.opensea.getCollection(seed.slug),
+        ])
       );
       mergedCandidates = seedCollectionsSettled
         .filter(
@@ -371,6 +402,10 @@ class NftDataService {
         )
         .map((item) => item.value)
         .filter((item): item is NormalizedCollection => Boolean(item));
+
+      if (!mergedCandidates.length) {
+        return matchingSeeds.map(buildSeedFallbackProfile);
+      }
     }
 
     const enrichedCandidates = await Promise.all(
