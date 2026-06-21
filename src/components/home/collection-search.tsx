@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 
@@ -13,26 +13,54 @@ export function CollectionSearch() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CollectionProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const latestRequestRef = useRef(0);
 
-  async function onSearch(nextQuery: string) {
-    setQuery(nextQuery);
-    if (!nextQuery.trim()) {
+  useEffect(() => {
+    const nextQuery = query.trim();
+    if (!nextQuery) {
       setResults([]);
+      setError(null);
+      setLoading(false);
       return;
     }
 
-    const requestId = latestRequestRef.current + 1;
-    latestRequestRef.current = requestId;
-    setLoading(true);
-    const response = await fetch(`/api/collections/search?q=${encodeURIComponent(nextQuery)}`);
-    const data = (await response.json()) as { collections: CollectionProfile[] };
-    if (latestRequestRef.current !== requestId) {
-      return;
-    }
-    setResults(data.collections);
-    setLoading(false);
-  }
+    const debounce = setTimeout(async () => {
+      const requestId = latestRequestRef.current + 1;
+      latestRequestRef.current = requestId;
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(
+          `/api/collections/search?q=${encodeURIComponent(nextQuery)}`
+        );
+        if (!response.ok) {
+          throw new Error(`Search failed with status ${response.status}`);
+        }
+
+        const data = (await response.json()) as { collections: CollectionProfile[] };
+        if (latestRequestRef.current !== requestId) {
+          return;
+        }
+
+        setResults(data.collections);
+      } catch {
+        if (latestRequestRef.current !== requestId) {
+          return;
+        }
+
+        setResults([]);
+        setError("Search temporarily unavailable. Please try again.");
+      } finally {
+        if (latestRequestRef.current === requestId) {
+          setLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => clearTimeout(debounce);
+  }, [query]);
 
   return (
     <div className="space-y-3">
@@ -40,13 +68,17 @@ export function CollectionSearch() {
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
-          onChange={(event) => onSearch(event.target.value)}
+          onChange={(event) => setQuery(event.target.value)}
           className="pl-9"
           placeholder="Search NFT collections..."
         />
       </div>
 
       {loading ? <p className="text-sm text-muted-foreground">Searching collections...</p> : null}
+      {error ? <p className="text-sm text-red-500">{error}</p> : null}
+      {!loading && !error && query.trim() && results.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No matching collections found yet.</p>
+      ) : null}
 
       {results.length > 0 ? (
         <Card>
