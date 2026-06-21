@@ -3,7 +3,7 @@ export interface TopCollectionSeed {
   name: string;
 }
 
-export const TOP_OPENSEA_COLLECTION_SEEDS: TopCollectionSeed[] = [
+export const TOP_COLLECTION_SEEDS: TopCollectionSeed[] = [
   { slug: "cryptopunks", name: "CryptoPunks" },
   { slug: "boredapeyachtclub", name: "Bored Ape Yacht Club" },
   { slug: "mutant-ape-yacht-club", name: "Mutant Ape Yacht Club" },

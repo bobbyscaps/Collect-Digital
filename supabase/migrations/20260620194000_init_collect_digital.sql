@@ -297,6 +297,17 @@ create table if not exists public.scoring_runs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.provider_cache_entries (
+  cache_key text primary key,
+  provider text not null,
+  value jsonb not null,
+  expires_at timestamptz not null,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_provider_cache_entries_expires_at
+  on public.provider_cache_entries (expires_at asc);
+
 alter table public.collection_wiki_entries enable row level security;
 alter table public.collection_timeline_events enable row level security;
 alter table public.project_claims enable row level security;

@@ -7,12 +7,10 @@ import { ScoreRing } from "@/components/score/score-ring";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { env } from "@/lib/env";
 import { MOCK_UPGRADE_CAMPAIGNS } from "@/lib/mock-data";
 import { getTrendingCollections } from "@/lib/opensea/service";
 
 export default async function HomePage() {
-  const hasOpenSeaKey = Boolean(env.OPENSEA_API_KEY);
   const trending = await getTrendingCollections();
   const topScores = [...trending]
     .sort((a, b) => b.score.overallScore - a.score.overallScore)
@@ -37,8 +35,9 @@ export default async function HomePage() {
             Evaluate NFT projects with transparent, versioned scoring.
           </h1>
           <p className="max-w-2xl text-muted-foreground">
-            Auto-generated OpenSea metrics, editable community history, collector wallet
-            ratings, and community-funded deep evaluations without pay-to-win scoring.
+            Reservoir market aggregation + Alchemy wallet intelligence, editable
+            community history, and community-funded deep evaluations without pay-to-win
+            scoring.
           </p>
           <div className="flex flex-wrap gap-3">
             <Button asChild>
@@ -54,12 +53,10 @@ export default async function HomePage() {
             <CardTitle>Collection search</CardTitle>
           </CardHeader>
           <CardContent>
-            {!hasOpenSeaKey ? (
-              <p className="mb-3 text-xs text-muted-foreground">
-                Add `OPENSEA_API_KEY` in `.env.local` to load the full OpenSea top
-                collection universe and live images/metrics.
-              </p>
-            ) : null}
+            <p className="mb-3 text-xs text-muted-foreground">
+              Primary data providers: Reservoir + Alchemy. OpenSea is supplemental
+              enrichment only.
+            </p>
             <CollectionSearch />
           </CardContent>
         </Card>

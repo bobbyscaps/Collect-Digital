@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { env } from "@/lib/env";
+import { PROVIDER_REFRESH_INTERVALS } from "@/lib/providers/refresh-config";
 import { refreshCollectionSnapshotsJob } from "@/lib/jobs/refresh-collections";
 
 export async function POST(request: Request) {
@@ -11,5 +12,9 @@ export async function POST(request: Request) {
   }
 
   const refreshed = await refreshCollectionSnapshotsJob();
-  return NextResponse.json({ refreshed, count: refreshed.length });
+  return NextResponse.json({
+    refreshed,
+    count: refreshed.length,
+    recommendedRefreshMs: PROVIDER_REFRESH_INTERVALS.marketDataMs,
+  });
 }
