@@ -274,35 +274,46 @@ export function SearchRatingWorkbench() {
           {results.length > 0 ? (
             <div className="space-y-2">
               {results.map((item) => (
-                <button
-                  type="button"
+                <div
                   key={item.slug}
-                  onClick={() => selectCollection(item)}
-                  className="flex w-full items-center justify-between gap-3 rounded-md border p-2 text-left text-sm transition hover:bg-accent"
+                  className="flex w-full items-center justify-between gap-2 rounded-md border p-2 text-sm"
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    {item.imageUrl ? (
-                      <img
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="h-7 w-7 rounded-full object-cover"
-                      />
-                    ) : (
-                      <span className="h-7 w-7 rounded-full border bg-muted" />
-                    )}
-                    <span className="truncate">{item.name}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {typeof item.baseScore === "number" ? (
-                      <span className="rounded-full border px-2 py-0.5 text-xs font-medium">
-                        Base {item.baseScore}
-                      </span>
-                    ) : null}
-                    <span className="max-w-36 truncate text-xs text-muted-foreground">
-                      {item.slug}
+                  <Link
+                    href={`/collections/${item.slug}`}
+                    className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-sm p-1 transition hover:bg-accent"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="h-7 w-7 rounded-full object-cover"
+                        />
+                      ) : (
+                        <span className="h-7 w-7 rounded-full border bg-muted" />
+                      )}
+                      <span className="truncate">{item.name}</span>
                     </span>
-                  </span>
-                </button>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {typeof item.baseScore === "number" ? (
+                        <span className="rounded-full border px-2 py-0.5 text-xs font-medium">
+                          Base {item.baseScore}
+                        </span>
+                      ) : null}
+                      <span className="max-w-36 truncate text-xs text-muted-foreground">
+                        {item.slug}
+                      </span>
+                    </span>
+                  </Link>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => selectCollection(item)}
+                  >
+                    Use
+                  </Button>
+                </div>
               ))}
             </div>
           ) : null}
