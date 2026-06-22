@@ -232,7 +232,7 @@ export function SearchRatingWorkbench() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="pl-9"
-              placeholder="Search by collection name, slug, or contract address..."
+              placeholder="Search by collection name or slug..."
             />
           </div>
           {loadingSearch ? (
