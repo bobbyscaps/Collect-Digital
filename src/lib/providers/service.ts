@@ -19,6 +19,15 @@ import type {
 const LIVE_TRENDING_LIMIT = 18;
 const LIVE_SEARCH_LIMIT = 30;
 const DEFAULT_CHAIN = "ethereum";
+const QUERY_FALLBACKS: Record<
+  string,
+  { slug: string; name: string; openseaUrl?: string }[]
+> = {
+  "franky's dinner": [{ slug: "frankys-dinner", name: "Franky's Dinner" }],
+  "frankys dinner": [{ slug: "frankys-dinner", name: "Franky's Dinner" }],
+  "long lost nft": [{ slug: "the-long-lost", name: "The Long Lost" }],
+  "long lost": [{ slug: "the-long-lost", name: "The Long Lost" }],
+};
 
 function normalizeSearchValue(value: string) {
   return value.trim().toLowerCase();
@@ -87,6 +96,14 @@ function generateSlugCandidates(query: string) {
 
 function looksLikeContractAddress(value: string) {
   return /^0x[a-f0-9]{40}$/i.test(value.trim());
+}
+
+function toHumanNameFromSlug(slug: string) {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function collectionDataWeight(collection: NormalizedCollection) {
@@ -192,6 +209,74 @@ function buildSeedFallbackProfile(seed: { slug: string; name: string }): Collect
     hasDevFounder: false,
     dataConfidenceLevel: "auto_generated",
   };
+}
+
+function buildQueryFallbackProfiles(query: string, slugCandidates: string[]) {
+  const normalized = normalizeSearchValue(query).replace(/[’]/g, "'");
+  const aliases = QUERY_FALLBACKS[normalized] ?? [];
+  const aliasProfiles = aliases.map((item) => ({
+    slug: item.slug,
+    name: item.name,
+    imageUrl: "",
+    baseScore: 50,
+    bannerUrl: null,
+    description: null,
+    contractAddress: null,
+    chain: DEFAULT_CHAIN,
+    openseaUrl: item.openseaUrl ?? `https://opensea.io/collection/${item.slug}`,
+    officialWebsite: null,
+    xUrl: null,
+    discordUrl: null,
+    telegramUrl: null,
+    foundedAt: null,
+    founderNames: [],
+    verified: false,
+    claimed: false,
+    hasToken: false,
+    hasRewardPlatform: false,
+    hasIrlEvents: false,
+    hasBusinessRevenue: false,
+    hasDevFounder: false,
+    dataConfidenceLevel: "auto_generated" as const,
+  }));
+
+  if (aliasProfiles.length) {
+    return aliasProfiles;
+  }
+
+  const generatedProfiles = slugCandidates.slice(0, 3).map((slug) => ({
+    slug,
+    name: toHumanNameFromSlug(slug),
+    imageUrl: "",
+    baseScore: 50,
+    bannerUrl: null,
+    description: null,
+    contractAddress: null,
+    chain: DEFAULT_CHAIN,
+    openseaUrl: `https://opensea.io/collection/${slug}`,
+    officialWebsite: null,
+    xUrl: null,
+    discordUrl: null,
+    telegramUrl: null,
+    foundedAt: null,
+    founderNames: [],
+    verified: false,
+    claimed: false,
+    hasToken: false,
+    hasRewardPlatform: false,
+    hasIrlEvents: false,
+    hasBusinessRevenue: false,
+    hasDevFounder: false,
+    dataConfidenceLevel: "auto_generated" as const,
+  }));
+
+  const deduped = new Map<string, CollectionProfile>();
+  for (const candidate of [...aliasProfiles, ...generatedProfiles]) {
+    if (!deduped.has(candidate.slug)) {
+      deduped.set(candidate.slug, candidate);
+    }
+  }
+  return Array.from(deduped.values());
 }
 
 function toProfile(
@@ -441,12 +526,17 @@ class NftDataService {
       ).slice(0, LIVE_SEARCH_LIMIT);
 
       if (!matchingSeeds.length) {
-        return MOCK_COLLECTIONS.filter((item) =>
+        const mockMatches = MOCK_COLLECTIONS.filter((item) =>
           normalizeSearchValue(item.profile.name).includes(normalizedQuery)
         ).map((item) => ({
           ...item.profile,
           baseScore: Math.round(item.score.overallScore),
         }));
+        if (mockMatches.length) {
+          return mockMatches;
+        }
+
+        return buildQueryFallbackProfiles(query, slugCandidates);
       }
 
       const seedCollectionsSettled = await Promise.allSettled(

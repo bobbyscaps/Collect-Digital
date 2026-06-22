@@ -12,10 +12,26 @@ import type {
 } from "@/providers/types";
 
 const OPENSEA_BASE_URL = "https://api.opensea.io/api/v2";
+const OPENSEA_WEB_BASE_URL = "https://opensea.io";
 const CACHE_TTL_MS = 1000 * 60 * 15;
 
 function looksLikeContractAddress(value: string) {
   return /^0x[a-f0-9]{40}$/i.test(value.trim());
+}
+
+function toSlugFromQuery(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function parseNumericFromText(value: string) {
+  const normalized = value.replace(/,/g, "").replace(/[^0-9.]+/g, "");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export class OpenSeaProvider implements NftDataProvider {
@@ -43,6 +59,109 @@ export class OpenSeaProvider implements NftDataProvider {
     const data = (await response.json()) as T;
     await setProviderCache(cacheKey, data, CACHE_TTL_MS, this.name);
     return data;
+  }
+
+  private async fetchText(pathOrUrl: string): Promise<string> {
+    const cacheKey = `provider:opensea:text:${pathOrUrl}`;
+    const cached = await getProviderCache<string>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const url = pathOrUrl.startsWith("http")
+      ? pathOrUrl
+      : `${OPENSEA_WEB_BASE_URL}${pathOrUrl}`;
+    const response = await fetch(url, {
+      headers: {
+        "Content-Type": "text/plain",
+      },
+      next: { revalidate: Math.floor(CACHE_TTL_MS / 1000) },
+    });
+    if (!response.ok) {
+      throw new Error(`OpenSea page error ${response.status}`);
+    }
+    const text = await response.text();
+    await setProviderCache(cacheKey, text, CACHE_TTL_MS, this.name);
+    return text;
+  }
+
+  private async getCollectionFromMarkdown(collectionSlug: string) {
+    try {
+      const markdown = await this.fetchText(`/collection/${collectionSlug}.md`);
+      if (!markdown || markdown.includes("Not Found")) {
+        return null;
+      }
+
+      const lines = markdown.split("\n");
+      const titleLine = lines.find((line) => line.startsWith("# "));
+      const name = titleLine
+        ? titleLine
+            .replace(/^#\s+/, "")
+            .replace(/\s+\(Verified\)\s*$/i, "")
+            .trim()
+        : collectionSlug;
+
+      const floorLine = lines.find((line) => line.includes("**Floor Price:**"));
+      const ownersLine = lines.find((line) => line.includes("**Owners:**"));
+      const volume7dLine = lines.find((line) => line.includes("**7d Volume:**"));
+      const aboutIndex = lines.findIndex((line) => line.trim() === "## About");
+      const linksIndex = lines.findIndex((line) => line.trim() === "## Links");
+      const description =
+        aboutIndex >= 0
+          ? lines
+              .slice(aboutIndex + 1, linksIndex > aboutIndex ? linksIndex : undefined)
+              .join(" ")
+              .trim()
+          : "";
+
+      const websiteMatch = markdown.match(/\[Official Website\]\((https?:\/\/[^)]+)\)/i);
+      const twitterMatch = markdown.match(/\[Twitter\]\((https?:\/\/[^)]+)\)/i);
+      const discordMatch = markdown.match(/\[Discord\]\((https?:\/\/[^)]+)\)/i);
+
+      let logoImage = "";
+      let heroImage: string | null = null;
+      try {
+        const html = await this.fetchText(`/collection/${collectionSlug}`);
+        const logoMatch = html.match(
+          /https:\/\/i2c\.seadn\.io\/collection\/[^"' )]+image_type_logo[^"' )]+/i
+        );
+        const heroMatch = html.match(
+          /https:\/\/i2c\.seadn\.io\/collection\/[^"' )]+image_type_hero_desktop[^"' )]+/i
+        );
+        logoImage = logoMatch?.[0] ?? "";
+        heroImage = heroMatch?.[0] ?? null;
+      } catch {
+        // No-op; markdown fallback still valid without images.
+      }
+
+      return {
+        id: collectionSlug,
+        slug: collectionSlug,
+        name,
+        image: logoImage,
+        floor: floorLine ? parseNumericFromText(floorLine) : 0,
+        topOffer: floorLine ? parseNumericFromText(floorLine) * 0.9 : 0,
+        holders: ownersLine ? parseNumericFromText(ownersLine) : 0,
+        sales: 0,
+        liquidity: floorLine ? parseNumericFromText(floorLine) : 0,
+        listedPercent: 0,
+        volume: volume7dLine ? parseNumericFromText(volume7dLine) : 0,
+        metadata: {
+          description: description || null,
+          bannerImage: heroImage,
+          website: websiteMatch?.[1] ?? null,
+          xUrl: twitterMatch?.[1] ?? null,
+          discordUrl: discordMatch?.[1] ?? null,
+          telegramUrl: null,
+          openseaUrl: `https://opensea.io/collection/${collectionSlug}`,
+          contractAddress: null,
+          chain: "ethereum",
+        },
+        provider: "opensea" as const,
+      } satisfies NormalizedCollection;
+    } catch {
+      return null;
+    }
   }
 
   private async resolveCollectionFromContract(
@@ -107,7 +226,8 @@ export class OpenSeaProvider implements NftDataProvider {
       ]);
 
       if (dataResult.status !== "fulfilled") {
-        return null;
+        const markdownFallback = await this.getCollectionFromMarkdown(lookupId);
+        return markdownFallback;
       }
 
       const data = dataResult.value;
@@ -140,7 +260,11 @@ export class OpenSeaProvider implements NftDataProvider {
         provider: "opensea",
       };
     } catch {
-      return null;
+      const lookupSlug = toSlugFromQuery(collectionId);
+      if (!lookupSlug) {
+        return null;
+      }
+      return this.getCollectionFromMarkdown(lookupSlug);
     }
   }
 
@@ -162,7 +286,7 @@ export class OpenSeaProvider implements NftDataProvider {
       const data = await this.fetchJson<Response>(
         `/collections?chain=ethereum&limit=${limit}&name=${encodeURIComponent(query)}`
       );
-      return (data.collections ?? []).map((item) => {
+      const mapped = (data.collections ?? []).map((item) => {
         const slug = item.slug ?? item.collection ?? item.name.toLowerCase().replace(/\s+/g, "-");
         return {
           id: slug,
@@ -183,6 +307,33 @@ export class OpenSeaProvider implements NftDataProvider {
           provider: "opensea" as const,
         };
       });
+      if (mapped.length > 0) {
+        return mapped;
+      }
+    } catch {
+      // Fall through to slug guess fallback below.
+    }
+
+    try {
+      const guess = toSlugFromQuery(query);
+      if (!guess) {
+        return [];
+      }
+      const guesses = [
+        guess,
+        guess.replace(/-nfts?$/, ""),
+        `the-${guess.replace(/-nfts?$/, "")}`,
+      ].filter(Boolean);
+      const settled = await Promise.allSettled(
+        guesses.map((slug) => this.getCollection(slug))
+      );
+      return settled
+        .filter(
+          (item): item is PromiseFulfilledResult<NormalizedCollection | null> =>
+            item.status === "fulfilled"
+        )
+        .map((item) => item.value)
+        .filter((item): item is NormalizedCollection => Boolean(item));
     } catch {
       return [];
     }
