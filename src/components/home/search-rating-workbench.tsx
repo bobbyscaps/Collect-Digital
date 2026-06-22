@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 
 import { ScoreRing } from "@/components/score/score-ring";
@@ -47,6 +48,7 @@ function cloneVersion(version: ScoringModelVersion): ScoringModelVersion {
 }
 
 export function SearchRatingWorkbench() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [defaultCollections, setDefaultCollections] = useState<CollectionProfile[]>([]);
   const [results, setResults] = useState<CollectionProfile[]>([]);
@@ -278,8 +280,9 @@ export function SearchRatingWorkbench() {
                   key={item.slug}
                   className="flex w-full items-center justify-between gap-2 rounded-md border p-2 text-sm"
                 >
-                  <Link
-                    href={`/collections/${item.slug}`}
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/collections/${item.slug}`)}
                     className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-sm p-1 transition hover:bg-accent"
                   >
                     <span className="flex min-w-0 items-center gap-2">
@@ -304,7 +307,7 @@ export function SearchRatingWorkbench() {
                         {item.slug}
                       </span>
                     </span>
-                  </Link>
+                  </button>
                   <Button
                     type="button"
                     variant="outline"
