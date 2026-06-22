@@ -25,7 +25,64 @@ function normalizeSearchValue(value: string) {
 }
 
 function toSlug(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+const SEARCH_ALIAS_SLUGS: Record<string, string[]> = {
+  "frankys dinner": ["frankys-dinner"],
+  "franky's dinner": ["frankys-dinner"],
+  "long lost nft": ["the-long-lost", "long-lost"],
+  "long lost": ["the-long-lost", "long-lost"],
+};
+
+function generateSlugCandidates(query: string) {
+  const normalized = normalizeSearchValue(query);
+  const canonical = normalized.replace(/[’']/g, "'");
+  const baseSlug = toSlug(query);
+  const compactWords = normalized
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const trimmedTokens = compactWords.filter(
+    (token) => !["nft", "nfts", "collection", "official", "club"].includes(token)
+  );
+  const trimmedSlug = trimmedTokens.join("-");
+
+  const candidates = new Set<string>();
+  if (baseSlug) {
+    candidates.add(baseSlug);
+  }
+  if (trimmedSlug) {
+    candidates.add(trimmedSlug);
+    candidates.add(`the-${trimmedSlug}`);
+  }
+  if (baseSlug.endsWith("-nft")) {
+    const noNft = baseSlug.replace(/-nft$/, "");
+    if (noNft) {
+      candidates.add(noNft);
+      candidates.add(`the-${noNft}`);
+    }
+  }
+  if (baseSlug.endsWith("-nfts")) {
+    const noNfts = baseSlug.replace(/-nfts$/, "");
+    if (noNfts) {
+      candidates.add(noNfts);
+      candidates.add(`the-${noNfts}`);
+    }
+  }
+
+  for (const alias of SEARCH_ALIAS_SLUGS[canonical] ?? []) {
+    candidates.add(alias);
+  }
+
+  return Array.from(candidates).filter(Boolean);
 }
 
 function looksLikeContractAddress(value: string) {
@@ -272,6 +329,7 @@ class NftDataService {
 
   async searchCollections(query: string) {
     const normalizedQuery = normalizeSearchValue(query);
+    const slugCandidates = generateSlugCandidates(query);
 
     if (!normalizedQuery) {
       const seeded = await buildSeededCollections(this.reservoir, 8);
@@ -327,7 +385,9 @@ class NftDataService {
       .map((item) => item.value)
       .filter((item): item is NormalizedCollection => Boolean(item));
 
-    const exactCandidates = [query, normalizedQuery, toSlug(query)];
+    const exactCandidates = Array.from(
+      new Set([query, normalizedQuery, ...slugCandidates])
+    );
     const exactLookups = await Promise.allSettled(
       exactCandidates.flatMap((candidate) => [
         this.reservoir.getCollection(candidate),

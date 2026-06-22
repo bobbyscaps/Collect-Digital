@@ -4,9 +4,9 @@ import { ExternalLink } from "lucide-react";
 /* eslint-disable @next/next/no-img-element */
 
 import { FloorChart } from "@/components/collection/floor-chart";
+import { UserScoreGauges } from "@/components/collection/user-score-gauges";
 import { WikiEditor } from "@/components/collection/wiki-editor";
 import { MetricCard } from "@/components/shared/metric-card";
-import { ScoreRing } from "@/components/score/score-ring";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,14 +27,15 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
 
   const { profile, marketSnapshot, score } = evaluation;
   const alerts = detectCollectionAlerts(evaluation);
+  const heroImage = profile.bannerUrl || profile.imageUrl;
 
   return (
     <div className="space-y-8">
-      {profile.bannerUrl ? (
+      {heroImage ? (
         <img
-          src={profile.bannerUrl}
+          src={heroImage}
           alt={`${profile.name} banner`}
-          className="h-44 w-full rounded-xl border object-cover"
+          className="h-44 w-full rounded-xl border object-cover md:h-56"
         />
       ) : null}
       <section className="grid gap-6 rounded-xl border p-6 lg:grid-cols-[2fr_1fr]">
@@ -70,9 +71,14 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
             </Button>
           </div>
         </div>
-        <div className="flex items-center justify-center">
-          <ScoreRing score={score.overallScore} label="Overall Score (0–100)" />
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>CD score + your score</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <UserScoreGauges evaluation={evaluation} />
+          </CardContent>
+        </Card>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

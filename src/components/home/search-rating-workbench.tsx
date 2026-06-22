@@ -48,6 +48,7 @@ function cloneVersion(version: ScoringModelVersion): ScoringModelVersion {
 
 export function SearchRatingWorkbench() {
   const [query, setQuery] = useState("");
+  const [defaultCollections, setDefaultCollections] = useState<CollectionProfile[]>([]);
   const [results, setResults] = useState<CollectionProfile[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -88,6 +89,31 @@ export function SearchRatingWorkbench() {
     }
 
     void loadModel();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadTopCollections() {
+      try {
+        const response = await fetch("/api/collections/search?q=");
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as { collections: CollectionProfile[] };
+        if (!active) {
+          return;
+        }
+        setDefaultCollections(payload.collections.slice(0, 8));
+      } catch {
+        // Best effort only: cards are supplemental.
+      }
+    }
+
+    void loadTopCollections();
     return () => {
       active = false;
     };
@@ -239,9 +265,9 @@ export function SearchRatingWorkbench() {
             <p className="text-sm text-muted-foreground">Searching collections...</p>
           ) : null}
           {searchError ? <p className="text-sm text-red-500">{searchError}</p> : null}
-          {!loadingSearch && !searchError && results.length === 0 ? (
+          {!loadingSearch && !searchError && query.trim() && results.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Start typing to search across providers and get an instant base score.
+              No matches yet. Try collection slug variants or shorter search terms.
             </p>
           ) : null}
 
@@ -278,6 +304,43 @@ export function SearchRatingWorkbench() {
                   </span>
                 </button>
               ))}
+            </div>
+          ) : null}
+
+          {defaultCollections.length > 0 ? (
+            <div className="space-y-2 pt-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Top projects
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {defaultCollections.map((item) => (
+                  <Link
+                    key={item.slug}
+                    href={`/collections/${item.slug}`}
+                    className="group overflow-hidden rounded-md border bg-card"
+                  >
+                    <div className="aspect-square w-full overflow-hidden bg-muted">
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="h-full w-full object-cover transition group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="h-full w-full bg-muted" />
+                      )}
+                    </div>
+                    <div className="space-y-1 p-2">
+                      <p className="truncate text-xs font-medium">{item.name}</p>
+                      {typeof item.baseScore === "number" ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          CD score {item.baseScore}
+                        </p>
+                      ) : null}
+                    </div>
+                  </Link>
+                ))}
+              </div>
             </div>
           ) : null}
 
