@@ -238,3 +238,70 @@ export interface ScoreSimulationResult {
   simulated: CollectionScoreResult;
   delta: number;
 }
+
+export type GovernanceVerificationStatus =
+  | "verified"
+  | "pending"
+  | "rejected";
+
+export type TimelineEventSource = "founder" | "community" | "system";
+
+export interface ProjectTimelineEvent {
+  id: string;
+  slug: string;
+  source: TimelineEventSource;
+  title: string;
+  description: string;
+  occurredAt: string;
+  submittedAt: string;
+  submittedBy: string;
+  verified: boolean;
+}
+
+export interface FounderClaimUpdateSubmission {
+  id: string;
+  slug: string;
+  walletAddress: string;
+  monthKey: string;
+  monthlyFeeUsd: number;
+  submittedAt: string;
+  status: GovernanceVerificationStatus;
+  relevant: boolean;
+  update: {
+    founders?: string;
+    team?: string;
+    roadmap?: string;
+    revenue?: string;
+    token?: string;
+    x?: string;
+    discord?: string;
+    telegram?: string;
+    website?: string;
+    majorMilestoneTitle?: string;
+    majorMilestoneDescription?: string;
+    majorMilestoneDate?: string;
+  };
+}
+
+export interface CommunityContributionSubmission {
+  id: string;
+  slug: string;
+  walletAddress: string;
+  monthKey: string;
+  submittedAt: string;
+  status: GovernanceVerificationStatus;
+  ownershipVerified: boolean;
+  contributionFeeUsd: number;
+  feedback: string;
+  majorEventTitle?: string;
+  majorEventDescription?: string;
+  majorEventDate?: string;
+}
+
+export interface ProjectGovernanceSnapshot {
+  slug: string;
+  founderUpdates: FounderClaimUpdateSubmission[];
+  communityContributions: CommunityContributionSubmission[];
+  timeline: ProjectTimelineEvent[];
+  communityMonthlyLimit: number;
+}

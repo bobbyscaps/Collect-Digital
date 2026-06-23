@@ -4,6 +4,7 @@ import { ExternalLink } from "lucide-react";
 /* eslint-disable @next/next/no-img-element */
 
 import { FloorChart } from "@/components/collection/floor-chart";
+import { GovernanceHub } from "@/components/collection/governance-hub";
 import { UserScoreGauges } from "@/components/collection/user-score-gauges";
 import { WikiEditor } from "@/components/collection/wiki-editor";
 import { MetricCard } from "@/components/shared/metric-card";
@@ -215,6 +216,17 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
                 </div>
               ))
             )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section>
+        <Card>
+          <CardHeader>
+            <CardTitle>Founder + community governance claims</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <GovernanceHub slug={slug} />
           </CardContent>
         </Card>
       </section>

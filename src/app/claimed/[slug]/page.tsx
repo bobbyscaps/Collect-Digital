@@ -15,8 +15,9 @@ export default async function ClaimedProjectPage({ params }: ClaimedProjectPageP
           <CardTitle>Claimed project dashboard</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          Add founder bios, roadmap, reward details, official links, and updates. Scores
-          remain formula-driven and cannot be manually edited.
+          Founder claim is a monthly plan. Submit official updates, milestones, and
+          profile links for verification. Verified and relevant updates can improve CD
+          score inputs while scores remain formula-driven.
         </CardContent>
       </Card>
 

@@ -1,5 +1,6 @@
 import { DEFAULT_SCORING_VERSION, MOCK_COLLECTIONS, MOCK_PORTFOLIO } from "@/lib/mock-data";
 import { TOP_COLLECTION_SEEDS } from "@/lib/providers/collection-seeds";
+import { getVerifiedProfilePatch } from "@/lib/project-governance/store";
 import { computeCollectionScore } from "@/lib/scoring/engine";
 import { AlchemyProvider } from "@/providers/alchemy/provider";
 import { OpenSeaProvider } from "@/providers/opensea/provider";
@@ -358,6 +359,26 @@ function toProfileWithBaseScore(collection: NormalizedCollection) {
   return toProfile(collection, Math.round(evaluation.score.overallScore));
 }
 
+function applyGovernancePatch(evaluation: CollectionEvaluation): CollectionEvaluation {
+  const patch = getVerifiedProfilePatch(evaluation.profile.slug);
+  if (!Object.keys(patch).length) {
+    return evaluation;
+  }
+
+  const merged: CollectionEvaluation = {
+    ...evaluation,
+    profile: {
+      ...evaluation.profile,
+      ...patch,
+      founderNames: patch.founderNames ?? evaluation.profile.founderNames,
+    },
+  };
+  return {
+    ...merged,
+    score: computeCollectionScore(merged, DEFAULT_SCORING_VERSION),
+  };
+}
+
 async function buildSeededCollections(
   reservoir: ReservoirProvider,
   limit: number
@@ -607,10 +628,10 @@ class NftDataService {
   async getCollectionEvaluation(slug: string) {
     const mock = MOCK_COLLECTIONS.find((collection) => collection.profile.slug === slug);
     if (mock) {
-      return {
+      return applyGovernancePatch({
         ...mock,
         score: computeCollectionScore(mock, DEFAULT_SCORING_VERSION),
-      };
+      });
     }
 
     const [collection, sales, historical] = await Promise.all([
@@ -622,9 +643,9 @@ class NftDataService {
     if (!collection) {
       const openseaSupplemental = await this.opensea.getCollection(slug);
       if (openseaSupplemental) {
-        return toEvaluation(openseaSupplemental);
+        return applyGovernancePatch(toEvaluation(openseaSupplemental));
       }
-      return {
+      return applyGovernancePatch({
         ...MOCK_COLLECTIONS[0],
         profile: {
           ...MOCK_COLLECTIONS[0].profile,
@@ -635,7 +656,7 @@ class NftDataService {
             .join(" "),
           openseaUrl: `https://opensea.io/collection/${slug}`,
         },
-      };
+      });
     }
 
     const enriched = await this.enrichCollection(collection);
@@ -646,7 +667,8 @@ class NftDataService {
           100
         : 0;
 
-    return toEvaluation(enriched, {
+    return applyGovernancePatch(
+      toEvaluation(enriched, {
       sales24h: sales.length,
       floorChange24hPct,
       bidDepthEth: Math.max(
@@ -659,7 +681,8 @@ class NftDataService {
       listedCount: (
         await this.reservoir.getListings(slug, { limit: 50 })
       ).length,
-    });
+    })
+    );
   }
 
   async getCollectionListings(slug: string) {
