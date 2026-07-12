@@ -3,6 +3,7 @@
 import { EyeOff, Filter, Layers, Search } from "lucide-react";
 
 import { useProfile } from "@/components/profile/profile-context";
+import { LockedCard } from "@/components/auth/locked-card";
 import {
   EmptyState,
   PlaceholderCard,
@@ -13,7 +14,8 @@ import {
 import { formatEth } from "@/lib/profile/data";
 
 export default function CollectionPage() {
-  const { profile, isOwner, canViewFinancials, canViewCollection } = useProfile();
+  const { profile, isOwner, canViewFinancials, canViewCollection, viewerAuthenticated } =
+    useProfile();
   const { portfolio } = profile;
 
   if (!canViewCollection) {
@@ -81,6 +83,20 @@ export default function CollectionPage() {
           ))}
         </div>
       </ProfileSection>
+
+      {!viewerAuthenticated && (
+        <LockedCard
+          title="Unlock full collection analysis"
+          description="Log in to see portfolio value, floor and best-offer valuations, holding periods, and collection-level analytics."
+          cta="Log in to view analysis"
+          items={[
+            "Portfolio value",
+            "Floor & best-offer value",
+            "Holding periods",
+            "Collection analytics",
+          ]}
+        />
+      )}
 
       {isOwner && (
         <ProfileSection

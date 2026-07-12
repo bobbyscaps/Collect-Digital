@@ -26,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { XIcon, GoogleIcon, AppleIcon } from "@/components/landing/brand-icons";
+import { UniversalSearch } from "@/components/search/universal-search";
 import { deriveUsername } from "@/lib/profile/data";
 
 type Feature = {
@@ -220,7 +221,15 @@ export default function LandingPage() {
               profiles, project scores, and token-gated social discovery.
             </p>
 
-            <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+            {/* Public universal search — no login required */}
+            <div className="mt-8 w-full max-w-xl">
+              <UniversalSearch />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Search any NFT collection or collector — no account needed.
+              </p>
+            </div>
+
+            <div className="mt-6 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
               <Button
                 size="xl"
                 className="group w-full sm:w-auto"

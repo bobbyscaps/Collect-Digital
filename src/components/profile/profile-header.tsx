@@ -6,13 +6,17 @@ import {
   BadgeCheck,
   Coins,
   Gauge,
+  Image as ImageIcon,
   Pencil,
+  ShieldCheck,
   TrendingUp,
+  Users,
   UserPlus,
   UserCheck,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useGatedLogin } from "@/components/auth/gated-login";
 import { useProfile } from "./profile-context";
 
 function HeaderStat({
@@ -40,8 +44,17 @@ function HeaderStat({
 }
 
 export function ProfileHeader() {
-  const { profile, isOwner } = useProfile();
+  const { profile, isOwner, viewerAuthenticated } = useProfile();
+  const { requireLogin } = useGatedLogin();
   const [following, setFollowing] = useState(false);
+
+  const handleFollow = () => {
+    if (!viewerAuthenticated) {
+      requireLogin();
+      return;
+    }
+    setFollowing((prev) => !prev);
+  };
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
@@ -69,6 +82,15 @@ export function ProfileHeader() {
                   <BadgeCheck className="h-3.5 w-3.5" />
                   {profile.mainBadge}
                 </span>
+                {profile.walletVerified && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-300"
+                    title="Verified wallet"
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Verified
+                  </span>
+                )}
               </div>
               <p className="text-sm text-muted-foreground">@{profile.username}</p>
             </div>
@@ -87,7 +109,7 @@ export function ProfileHeader() {
               <Button
                 variant={following ? "outline" : "default"}
                 className={following ? "border-white/15 bg-white/5 hover:bg-white/10" : ""}
-                onClick={() => setFollowing((prev) => !prev)}
+                onClick={handleFollow}
               >
                 {following ? <UserCheck /> : <UserPlus />}
                 {following ? "Following" : "Follow"}
@@ -101,8 +123,8 @@ export function ProfileHeader() {
           {profile.bioSummary}
         </p>
 
-        {/* Followers */}
-        <div className="mt-3 flex gap-4 text-sm">
+        {/* Public counts */}
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
           <span>
             <span className="font-semibold">{profile.followers.toLocaleString()}</span>{" "}
             <span className="text-muted-foreground">Followers</span>
@@ -110,6 +132,14 @@ export function ProfileHeader() {
           <span>
             <span className="font-semibold">{profile.following.toLocaleString()}</span>{" "}
             <span className="text-muted-foreground">Following</span>
+          </span>
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
+            <ImageIcon className="h-3.5 w-3.5" />
+            {profile.publicNftCount} shown
+          </span>
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
+            <Users className="h-3.5 w-3.5" />
+            {profile.communitiesCount} communities
           </span>
         </div>
 
