@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Gauge,
   UserCircle2,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import {
   usePrivy,
+  useLogin,
   useLoginWithOAuth,
   useConnectOrCreateWallet,
   type OAuthProviderType,
@@ -23,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { XIcon, GoogleIcon, AppleIcon } from "@/components/landing/brand-icons";
+import { deriveUsername } from "@/lib/profile/data";
 
 type Feature = {
   title: string;
@@ -98,9 +102,26 @@ function Wordmark() {
 }
 
 export default function LandingPage() {
-  const { ready, authenticated, user, login, logout } = usePrivy();
-  const { initOAuth, loading: oauthLoading } = useLoginWithOAuth();
-  const { connectOrCreateWallet } = useConnectOrCreateWallet();
+  const router = useRouter();
+  const { ready, authenticated, user, logout } = usePrivy();
+
+  // After a user logs in (and, in the future, completes onboarding), send them
+  // to their Collector Profile Bio page by default.
+  const goToProfile = useCallback(
+    (loggedInUser: User) => {
+      router.push(`/profile/${deriveUsername(loggedInUser)}`);
+    },
+    [router]
+  );
+
+  const { login } = useLogin({ onComplete: ({ user }) => goToProfile(user) });
+  const { initOAuth, loading: oauthLoading } = useLoginWithOAuth({
+    onComplete: ({ user }) => goToProfile(user),
+  });
+  const { connectOrCreateWallet } = useConnectOrCreateWallet({
+    onSuccess: ({ wallet }) =>
+      router.push(`/profile/${wallet.address.slice(2, 10).toLowerCase()}`),
+  });
 
   const authDisabled = !ready;
 
@@ -136,6 +157,11 @@ export default function LandingPage() {
           </Button>
           {authenticated ? (
             <>
+              {user && (
+                <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+                  <Link href={`/profile/${deriveUsername(user)}`}>View Profile</Link>
+                </Button>
+              )}
               <span className="max-w-[180px] truncate rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-muted-foreground">
                 {accountLabel(user)}
               </span>
