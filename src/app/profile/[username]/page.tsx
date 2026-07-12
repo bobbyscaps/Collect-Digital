@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { useProfile } from "@/components/profile/profile-context";
+import { LockedCard } from "@/components/auth/locked-card";
 import { ProfileSection, TagChips } from "@/components/profile/ui";
 
 function DetailRow({
@@ -37,7 +38,7 @@ function DetailRow({
 }
 
 export default function BioPage() {
-  const { profile } = useProfile();
+  const { profile, viewerAuthenticated } = useProfile();
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -75,29 +76,42 @@ export default function BioPage() {
           </div>
         </ProfileSection>
 
-        <ProfileSection title="Recent Point Activity">
-          <ul className="divide-y divide-white/5">
-            {profile.recentPointActivity.map((activity) => (
-              <li
-                key={activity.id}
-                className="flex items-center justify-between gap-3 py-3"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-violet-500/20 to-sky-400/20 text-indigo-300">
-                    <Sparkles className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <p className="text-sm">{activity.label}</p>
-                    <p className="text-xs text-muted-foreground">{activity.when}</p>
+        {viewerAuthenticated ? (
+          <ProfileSection title="Recent Point Activity">
+            <ul className="divide-y divide-white/5">
+              {profile.recentPointActivity.map((activity) => (
+                <li
+                  key={activity.id}
+                  className="flex items-center justify-between gap-3 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-violet-500/20 to-sky-400/20 text-indigo-300">
+                      <Sparkles className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm">{activity.label}</p>
+                      <p className="text-xs text-muted-foreground">{activity.when}</p>
+                    </div>
                   </div>
-                </div>
-                <span className="text-sm font-semibold text-emerald-300">
-                  +{activity.points}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </ProfileSection>
+                  <span className="text-sm font-semibold text-emerald-300">
+                    +{activity.points}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </ProfileSection>
+        ) : (
+          <LockedCard
+            title="Community reputation & point history"
+            description="Log in to see this collector's point history, community reputation, and detailed badge activity."
+            cta="Log in to view more"
+            items={[
+              "Recent point activity",
+              "Community reputation",
+              "Detailed badge history",
+            ]}
+          />
+        )}
       </div>
 
       {/* Side column */}
