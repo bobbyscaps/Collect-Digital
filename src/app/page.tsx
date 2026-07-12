@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Gauge,
   UserCircle2,
@@ -6,8 +8,16 @@ import {
   Coins,
   Wallet,
   ArrowRight,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
+import {
+  usePrivy,
+  useLoginWithOAuth,
+  useConnectOrCreateWallet,
+  type OAuthProviderType,
+  type User,
+} from "@privy-io/react-auth";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,11 +62,26 @@ const features: Feature[] = [
   },
 ];
 
-const socialLogins = [
-  { label: "Continue with X", icon: XIcon },
-  { label: "Continue with Google", icon: GoogleIcon },
-  { label: "Continue with Apple", icon: AppleIcon },
+const socialLogins: {
+  label: string;
+  icon: (props: React.SVGProps<SVGSVGElement>) => React.JSX.Element;
+  provider: OAuthProviderType;
+}[] = [
+  { label: "Continue with X", icon: XIcon, provider: "twitter" },
+  { label: "Continue with Google", icon: GoogleIcon, provider: "google" },
+  { label: "Continue with Apple", icon: AppleIcon, provider: "apple" },
 ];
+
+function accountLabel(user: User | null): string {
+  if (!user) return "Account";
+  if (user.twitter?.username) return `@${user.twitter.username}`;
+  if (user.google?.email) return user.google.email;
+  if (user.apple?.email) return user.apple.email;
+  if (user.email?.address) return user.email.address;
+  const address = user.wallet?.address;
+  if (address) return `${address.slice(0, 6)}…${address.slice(-4)}`;
+  return "Account";
+}
 
 function Wordmark() {
   return (
@@ -72,6 +97,20 @@ function Wordmark() {
 }
 
 export default function LandingPage() {
+  const { ready, authenticated, user, login, logout } = usePrivy();
+  const { initOAuth, loading: oauthLoading } = useLoginWithOAuth();
+  const { connectOrCreateWallet } = useConnectOrCreateWallet();
+
+  const authDisabled = !ready;
+
+  const handleOAuth = (provider: OAuthProviderType) => {
+    initOAuth({ provider }).catch((error) => {
+      console.error(`Privy OAuth (${provider}) failed`, error);
+    });
+  };
+
+  const handleConnectWallet = () => connectOrCreateWallet();
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Ambient background */}
@@ -86,10 +125,37 @@ export default function LandingPage() {
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <Wordmark />
         <div className="hidden items-center gap-3 sm:flex">
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
-            Sign in
-          </Button>
-          <Button size="sm">Join Collect Digital</Button>
+          {authenticated ? (
+            <>
+              <span className="max-w-[180px] truncate rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                {accountLabel(user)}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={logout}
+              >
+                <LogOut />
+                Log out
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={login}
+                disabled={authDisabled}
+              >
+                Sign in
+              </Button>
+              <Button size="sm" onClick={login} disabled={authDisabled}>
+                Join Collect Digital
+              </Button>
+            </>
+          )}
         </div>
       </header>
 
@@ -120,7 +186,12 @@ export default function LandingPage() {
             </p>
 
             <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-              <Button size="xl" className="group w-full sm:w-auto">
+              <Button
+                size="xl"
+                className="group w-full sm:w-auto"
+                onClick={login}
+                disabled={authDisabled}
+              >
                 Join Collect Digital
                 <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
               </Button>
@@ -128,6 +199,8 @@ export default function LandingPage() {
                 size="xl"
                 variant="outline"
                 className="w-full border-white/15 bg-white/5 hover:bg-white/10 sm:w-auto"
+                onClick={handleConnectWallet}
+                disabled={authDisabled}
               >
                 <Wallet />
                 Connect Wallet
@@ -147,11 +220,13 @@ export default function LandingPage() {
                 </p>
 
                 <div className="mt-6 space-y-3">
-                  {socialLogins.map(({ label, icon: Icon }) => (
+                  {socialLogins.map(({ label, icon: Icon, provider }) => (
                     <Button
                       key={label}
                       variant="outline"
                       className="h-11 w-full justify-center gap-3 border-white/10 bg-white/5 text-sm font-medium hover:bg-white/10"
+                      onClick={() => handleOAuth(provider)}
+                      disabled={authDisabled || oauthLoading}
                     >
                       <Icon className="h-4 w-4" />
                       {label}
@@ -168,6 +243,8 @@ export default function LandingPage() {
                 <Button
                   variant="outline"
                   className="h-11 w-full justify-center gap-3 border-white/15 bg-white/5 hover:bg-white/10"
+                  onClick={handleConnectWallet}
+                  disabled={authDisabled}
                 >
                   <Wallet className="h-4 w-4" />
                   Connect Wallet
@@ -224,7 +301,12 @@ export default function LandingPage() {
                 Get on the network built for collectors.
               </h2>
               <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-                <Button size="xl" className="group w-full sm:w-auto">
+                <Button
+                  size="xl"
+                  className="group w-full sm:w-auto"
+                  onClick={login}
+                  disabled={authDisabled}
+                >
                   Join Collect Digital
                   <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
                 </Button>
@@ -232,6 +314,8 @@ export default function LandingPage() {
                   size="xl"
                   variant="outline"
                   className="w-full border-white/15 bg-white/5 hover:bg-white/10 sm:w-auto"
+                  onClick={handleConnectWallet}
+                  disabled={authDisabled}
                 >
                   <Wallet />
                   Connect Wallet

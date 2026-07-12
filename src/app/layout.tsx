@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import Providers from "@/components/providers";
 
 export const metadata: Metadata = {
   title: "Collect Digital — The Collector Intelligence Network",
@@ -15,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
