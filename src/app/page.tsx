@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Gauge,
   UserCircle2,
@@ -125,6 +126,14 @@ export default function LandingPage() {
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <Wordmark />
         <div className="hidden items-center gap-3 sm:flex">
+          <Button
+            asChild
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+          >
+            <Link href="/whitepaper">White Paper</Link>
+          </Button>
           {authenticated ? (
             <>
               <span className="max-w-[180px] truncate rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-muted-foreground">
