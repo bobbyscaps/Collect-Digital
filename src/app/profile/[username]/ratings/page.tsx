@@ -3,6 +3,7 @@
 import { Award, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { useProfile } from "@/components/profile/profile-context";
+import { LockedCard } from "@/components/auth/locked-card";
 import {
   PrivateValue,
   ProfileSection,
@@ -29,7 +30,25 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
 }
 
 export default function RatingsPage() {
-  const { profile, canViewFinancials } = useProfile();
+  const { profile, canViewFinancials, viewerAuthenticated } = useProfile();
+
+  if (!viewerAuthenticated) {
+    return (
+      <LockedCard
+        title="Unlock the full Collector Rating"
+        description="Log in to see the full Collector Score and Flipper Score breakdown, strengths and weaknesses, best collection calls, most profitable flips, and badge history."
+        cta="Log in to view full ratings"
+        items={[
+          "Collector Score breakdown",
+          "Flipper Score breakdown",
+          "Strengths & weaknesses",
+          "Best collection calls",
+          "Most profitable flips",
+          "Badge history",
+        ]}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -11,6 +11,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { useProfile } from "@/components/profile/profile-context";
+import { LockedCard } from "@/components/auth/locked-card";
 import { ProfileSection } from "@/components/profile/ui";
 
 type ActivityRow = {
@@ -31,6 +33,25 @@ const ACTIVITY: ActivityRow[] = [
 ];
 
 export default function ActivityPage() {
+  const { viewerAuthenticated } = useProfile();
+
+  if (!viewerAuthenticated) {
+    return (
+      <LockedCard
+        title="Unlock full activity history"
+        description="Log in to view purchases, sales, mints, transfers, comments, community contributions, point earnings, and badge achievements."
+        cta="Log in to view activity"
+        items={[
+          "Purchases & sales",
+          "Mints & transfers",
+          "Comments & contributions",
+          "Point earnings",
+          "Badge achievements",
+        ]}
+      />
+    );
+  }
+
   return (
     <ProfileSection
       title="Activity"

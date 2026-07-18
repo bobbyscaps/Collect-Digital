@@ -51,8 +51,25 @@ export type Profile = {
   recentPointActivity: PointActivity[];
   followers: number;
   following: number;
+  communitiesCount: number;
+  publicNftCount: number;
+  walletVerified: boolean;
   privacy: ProfilePrivacy;
   portfolio: ProfilePortfolio;
+};
+
+/** Compact, public-safe representation of a collector used in search results. */
+export type CollectorPreview = {
+  username: string;
+  displayName: string;
+  initials: string;
+  bioSummary: string;
+  mainBadge: string;
+  collectorScore: number;
+  followers: number;
+  publicNftCount: number;
+  communitiesCount: number;
+  walletVerified: boolean;
 };
 
 const MAIN_BADGES = [
@@ -172,6 +189,9 @@ export function getProfile(usernameInput: string): Profile {
     ],
     followers: 300 + (seed % 5200),
     following: 80 + (seed % 900),
+    communitiesCount: 2 + (seed % 7),
+    publicNftCount: 6 + (seed % 18),
+    walletVerified: seed % 4 !== 0,
     privacy: {
       showFinancials: false,
       showCollection: true,
@@ -184,4 +204,54 @@ export function getProfile(usernameInput: string): Profile {
       hiddenCount: seed % 8,
     },
   };
+}
+
+export function toCollectorPreview(profile: Profile): CollectorPreview {
+  return {
+    username: profile.username,
+    displayName: profile.displayName,
+    initials: profile.initials,
+    bioSummary: profile.bioSummary,
+    mainBadge: profile.mainBadge,
+    collectorScore: profile.collectorScore,
+    followers: profile.followers,
+    publicNftCount: profile.publicNftCount,
+    communitiesCount: profile.communitiesCount,
+    walletVerified: profile.walletVerified,
+  };
+}
+
+const CURATED_COLLECTORS = [
+  "satoshi",
+  "punk6529",
+  "vincent-van-dao",
+  "luna-collector",
+  "degen-dan",
+  "art-whale",
+  "pixel-priya",
+  "onchain-omar",
+];
+
+/**
+ * Collector directory search. There is no collector database yet, so this
+ * returns curated sample collectors matching the query plus a generated
+ * profile preview for the exact query, all backed by the shared profile model.
+ */
+export function searchCollectors(query: string, limit = 8): CollectorPreview[] {
+  const slug = slugify(query);
+  const normalized = query.trim().toLowerCase();
+
+  let usernames: string[];
+  if (!slug) {
+    usernames = CURATED_COLLECTORS.slice(0, limit);
+  } else {
+    const matches = CURATED_COLLECTORS.filter(
+      (name) =>
+        name.includes(slug) || toDisplayName(name).toLowerCase().includes(normalized)
+    );
+    const ordered = matches.includes(slug) ? matches : [slug, ...matches];
+    usernames = Array.from(new Set(ordered)).slice(0, limit);
+  }
+
+  return usernames.map((name) => toCollectorPreview(getProfile(name)));
 }
