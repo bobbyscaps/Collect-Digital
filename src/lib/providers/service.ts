@@ -2,6 +2,7 @@ import { DEFAULT_SCORING_VERSION, MOCK_COLLECTIONS, MOCK_PORTFOLIO } from "@/lib
 import { TOP_COLLECTION_SEEDS } from "@/lib/providers/collection-seeds";
 import { getVerifiedProfilePatch } from "@/lib/project-governance/store";
 import { computeCollectionScore } from "@/lib/scoring/engine";
+import { getActiveScoringModelVersion } from "@/lib/scoring/repository";
 import { AlchemyProvider } from "@/providers/alchemy/provider";
 import { OpenSeaProvider } from "@/providers/opensea/provider";
 import { ReservoirProvider } from "@/providers/reservoir/provider";
@@ -9,6 +10,7 @@ import { SimpleHashProvider } from "@/providers/simplehash/provider";
 import type {
   CollectionEvaluation,
   CollectionProfile,
+  ScoringModelVersion,
   WalletCollectionPosition,
   WalletPortfolioSummary,
 } from "@/lib/types";
@@ -319,7 +321,8 @@ function toEvaluation(
     floorChange24hPct?: number;
     bidDepthEth?: number;
     listedCount?: number;
-  }
+  },
+  version: ScoringModelVersion = DEFAULT_SCORING_VERSION
 ): CollectionEvaluation {
   const profile = toProfile(collection);
   const evaluation: CollectionEvaluation = {
@@ -350,16 +353,22 @@ function toEvaluation(
       computedAt: "",
     },
   };
-  evaluation.score = computeCollectionScore(evaluation, DEFAULT_SCORING_VERSION);
+  evaluation.score = computeCollectionScore(evaluation, version);
   return evaluation;
 }
 
-function toProfileWithBaseScore(collection: NormalizedCollection) {
-  const evaluation = toEvaluation(collection);
+function toProfileWithBaseScore(
+  collection: NormalizedCollection,
+  version: ScoringModelVersion = DEFAULT_SCORING_VERSION
+) {
+  const evaluation = toEvaluation(collection, undefined, version);
   return toProfile(collection, Math.round(evaluation.score.overallScore));
 }
 
-function applyGovernancePatch(evaluation: CollectionEvaluation): CollectionEvaluation {
+function applyGovernancePatch(
+  evaluation: CollectionEvaluation,
+  version: ScoringModelVersion = DEFAULT_SCORING_VERSION
+): CollectionEvaluation {
   const patch = getVerifiedProfilePatch(evaluation.profile.slug);
   if (!Object.keys(patch).length) {
     return evaluation;
@@ -375,7 +384,7 @@ function applyGovernancePatch(evaluation: CollectionEvaluation): CollectionEvalu
   };
   return {
     ...merged,
-    score: computeCollectionScore(merged, DEFAULT_SCORING_VERSION),
+    score: computeCollectionScore(merged, version),
   };
 }
 
@@ -434,6 +443,7 @@ class NftDataService {
   }
 
   async searchCollections(query: string) {
+    const version = await getActiveScoringModelVersion();
     const normalizedQuery = normalizeSearchValue(query);
     const slugCandidates = generateSlugCandidates(query);
 
@@ -443,7 +453,9 @@ class NftDataService {
         const enrichedSeeded = await Promise.all(
           seeded.map((collection) => this.enrichCollection(collection))
         );
-        return enrichedSeeded.map(toProfileWithBaseScore);
+        return enrichedSeeded.map((collection) =>
+          toProfileWithBaseScore(collection, version)
+        );
       }
 
       const supplementalSettled = await Promise.allSettled(
@@ -460,7 +472,9 @@ class NftDataService {
         .filter((item): item is NormalizedCollection => Boolean(item));
 
       if (supplementalCollections.length) {
-        return supplementalCollections.map(toProfileWithBaseScore);
+        return supplementalCollections.map((collection) =>
+          toProfileWithBaseScore(collection, version)
+        );
       }
 
       return MOCK_COLLECTIONS.slice(0, 8).map((item) => ({
@@ -592,10 +606,11 @@ class NftDataService {
       .slice(0, LIVE_SEARCH_LIMIT)
       .map((item) => item.collection);
 
-    return ranked.map(toProfileWithBaseScore);
+    return ranked.map((collection) => toProfileWithBaseScore(collection, version));
   }
 
   async getTrendingCollections() {
+    const version = await getActiveScoringModelVersion();
     const seeded = await buildSeededCollections(this.reservoir, LIVE_TRENDING_LIMIT);
     if (!seeded.length) {
       const supplementalSettled = await Promise.allSettled(
@@ -611,7 +626,7 @@ class NftDataService {
         .map((item) => item.value)
         .filter((item): item is NormalizedCollection => Boolean(item));
       if (supplemental.length) {
-        return supplemental.map((collection) => toEvaluation(collection));
+        return supplemental.map((collection) => toEvaluation(collection, undefined, version));
       }
       return MOCK_COLLECTIONS;
     }
@@ -622,16 +637,20 @@ class NftDataService {
 
     return enriched
       .sort((a, b) => b.volume - a.volume)
-      .map((collection) => toEvaluation(collection));
+      .map((collection) => toEvaluation(collection, undefined, version));
   }
 
   async getCollectionEvaluation(slug: string) {
+    const version = await getActiveScoringModelVersion();
     const mock = MOCK_COLLECTIONS.find((collection) => collection.profile.slug === slug);
     if (mock) {
-      return applyGovernancePatch({
-        ...mock,
-        score: computeCollectionScore(mock, DEFAULT_SCORING_VERSION),
-      });
+      return applyGovernancePatch(
+        {
+          ...mock,
+          score: computeCollectionScore(mock, version),
+        },
+        version
+      );
     }
 
     const [collection, sales, historical] = await Promise.all([
@@ -643,20 +662,26 @@ class NftDataService {
     if (!collection) {
       const openseaSupplemental = await this.opensea.getCollection(slug);
       if (openseaSupplemental) {
-        return applyGovernancePatch(toEvaluation(openseaSupplemental));
+        return applyGovernancePatch(
+          toEvaluation(openseaSupplemental, undefined, version),
+          version
+        );
       }
-      return applyGovernancePatch({
-        ...MOCK_COLLECTIONS[0],
-        profile: {
-          ...MOCK_COLLECTIONS[0].profile,
-          slug,
-          name: slug
-            .split("-")
-            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(" "),
-          openseaUrl: `https://opensea.io/collection/${slug}`,
+      return applyGovernancePatch(
+        {
+          ...MOCK_COLLECTIONS[0],
+          profile: {
+            ...MOCK_COLLECTIONS[0].profile,
+            slug,
+            name: slug
+              .split("-")
+              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+              .join(" "),
+            openseaUrl: `https://opensea.io/collection/${slug}`,
+          },
         },
-      });
+        version
+      );
     }
 
     const enriched = await this.enrichCollection(collection);
@@ -668,20 +693,25 @@ class NftDataService {
         : 0;
 
     return applyGovernancePatch(
-      toEvaluation(enriched, {
-      sales24h: sales.length,
-      floorChange24hPct,
-      bidDepthEth: Math.max(
-        0,
-        (await this.reservoir.getOffers(slug, { limit: 20 })).reduce(
-          (acc, offer) => acc + offer.priceEth,
-          0
-        )
+      toEvaluation(
+        enriched,
+        {
+          sales24h: sales.length,
+          floorChange24hPct,
+          bidDepthEth: Math.max(
+            0,
+            (await this.reservoir.getOffers(slug, { limit: 20 })).reduce(
+              (acc, offer) => acc + offer.priceEth,
+              0
+            )
+          ),
+          listedCount: (
+            await this.reservoir.getListings(slug, { limit: 50 })
+          ).length,
+        },
+        version
       ),
-      listedCount: (
-        await this.reservoir.getListings(slug, { limit: 50 })
-      ).length,
-    })
+      version
     );
   }
 
