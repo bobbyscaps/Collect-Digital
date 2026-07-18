@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FlaskConical } from "lucide-react";
 
+import { AdminGate } from "@/components/admin/admin-gate";
 import { ScoreLabWorkbench } from "@/components/admin/score-lab-workbench";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { listScoringVersions } from "@/lib/scoring/repository";
@@ -59,7 +60,9 @@ export default async function ScoreLabPage() {
           </CardContent>
         </Card>
 
-        <ScoreLabWorkbench versions={versions} />
+        <AdminGate>
+          <ScoreLabWorkbench versions={versions} />
+        </AdminGate>
       </main>
     </div>
   );
