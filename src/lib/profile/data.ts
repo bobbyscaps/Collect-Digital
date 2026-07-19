@@ -72,6 +72,8 @@ export type Profile = {
   rating: WalletCollectorRating;
   /** The six normalized sub-scores that blend into the Collector Score. */
   subScores: CollectorSubScores;
+  /** Whether the rating was derived from on-chain history or synthetic metrics. */
+  ratingSource: "onchain" | "synthetic";
 };
 
 /** Compact, public-safe representation of a collector used in search results. */
@@ -88,7 +90,7 @@ export type CollectorPreview = {
   walletVerified: boolean;
 };
 
-const IDENTITY_LABELS: Record<WalletIdentityType, string> = {
+export const IDENTITY_LABELS: Record<WalletIdentityType, string> = {
   diamond_collector: "Diamond Collector",
   true_collector: "True Collector",
   curator: "Curator",
@@ -139,7 +141,7 @@ export function deriveUsername(user: User): string {
   if (user.google?.email) return slugify(user.google.email.split("@")[0]);
   if (user.apple?.email) return slugify(user.apple.email.split("@")[0]);
   if (user.email?.address) return slugify(user.email.address.split("@")[0]);
-  if (user.wallet?.address) return user.wallet.address.slice(2, 10).toLowerCase();
+  if (user.wallet?.address) return user.wallet.address.toLowerCase();
   return "me";
 }
 
@@ -263,6 +265,7 @@ export function getProfile(usernameInput: string): Profile {
     },
     rating,
     subScores,
+    ratingSource: "synthetic",
   };
 }
 

@@ -59,6 +59,22 @@ export interface NormalizedHistoricalPoint {
   salesCount: number;
 }
 
+export interface NormalizedHeldToken {
+  collectionId: string;
+  collectionName: string;
+  acquiredAt: number;
+  floorEth: number;
+}
+
+export interface NormalizedWalletActivity {
+  type: string;
+  timestamp: number;
+  priceEth: number;
+  fromAddress?: string;
+  toAddress?: string;
+  collectionId?: string;
+}
+
 export interface NormalizedWalletNft {
   contractAddress: string;
   tokenId: string;
