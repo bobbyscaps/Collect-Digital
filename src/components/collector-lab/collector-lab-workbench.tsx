@@ -23,10 +23,13 @@ type SimResult = {
 };
 
 function toSliderWeights(weights: CollectorSubScoreWeights): CollectorSubScoreWeights {
-  // Display fractional weights on a 0-100 point scale (blend normalizes anyway).
+  // Normalize any input scale (fractions or points) to points summing to ~100
+  // for display. The blend re-normalizes anyway, so only the ratios matter.
+  const total =
+    COLLECTOR_SUB_SCORE_ORDER.reduce((acc, key) => acc + (weights[key] ?? 0), 0) || 1;
   const scaled = {} as CollectorSubScoreWeights;
   for (const key of COLLECTOR_SUB_SCORE_ORDER) {
-    scaled[key] = Math.round((weights[key] ?? 0) * 100);
+    scaled[key] = Math.round(((weights[key] ?? 0) / total) * 100);
   }
   return scaled;
 }
