@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { AlchemyProvider } from "@/providers/alchemy/provider";
 import { ReservoirProvider } from "@/providers/reservoir/provider";
 import type {
   NormalizedHeldToken,
@@ -44,9 +45,13 @@ function pct(count: number, total: number): number {
 }
 
 /**
- * Derive real wallet behavior metrics from on-chain history via Reservoir
- * (keyless). Returns null if the wallet has no reachable history so callers can
- * fall back to synthetic metrics.
+ * Derive real wallet behavior metrics from on-chain history. Uses Alchemy
+ * (requires ALCHEMY_API_KEY) as the primary source, with Reservoir as a
+ * best-effort secondary. Returns null when no history is reachable (e.g. no API
+ * key configured) so callers can fall back to synthetic metrics.
+ *
+ * Note: Alchemy transfers do not carry sale prices, so trading volume and
+ * realized PnL are only populated when the secondary priced source is available.
  *
  * Dimensions that are reliably derivable from transfers/holdings are real:
  * wallet age, buy/sell/mint counts, holding periods, activity/turnover, trading
@@ -64,15 +69,22 @@ export async function deriveWalletMetrics(
   if (!isEthAddress(address)) return null;
 
   const wallet = address.toLowerCase();
+  const alchemy = new AlchemyProvider(env.ALCHEMY_API_KEY);
   const reservoir = new ReservoirProvider(env.RESERVOIR_API_KEY);
 
   let holdings: NormalizedHeldToken[] = [];
   let activity: NormalizedWalletActivity[] = [];
   try {
     [holdings, activity] = await Promise.all([
-      reservoir.getUserTokens(wallet, { limit: 200 }),
-      reservoir.getUserActivity(wallet, { limit: 500 }),
+      alchemy.getUserTokens(wallet, { limit: 200 }),
+      alchemy.getUserActivity(wallet),
     ]);
+    if (holdings.length === 0 && activity.length === 0) {
+      [holdings, activity] = await Promise.all([
+        reservoir.getUserTokens(wallet, { limit: 200 }),
+        reservoir.getUserActivity(wallet, { limit: 500 }),
+      ]);
+    }
   } catch {
     return null;
   }
@@ -83,11 +95,15 @@ export async function deriveWalletMetrics(
 
   const now = Date.now();
 
-  const sales = activity.filter((event) => event.type === "sale");
-  const mints = activity.filter((event) => event.type === "mint");
-  const buys = sales.filter((event) => event.toAddress === wallet);
-  const sells = sales.filter((event) => event.fromAddress === wallet);
-  const userMints = mints.filter((event) => event.toAddress === wallet);
+  // Provider-agnostic: a "buy"/acquisition is an inbound non-mint transfer, a
+  // "sell"/disposal is an outbound transfer, and a mint is from the zero address.
+  const buys = activity.filter(
+    (event) => event.toAddress === wallet && event.type !== "mint"
+  );
+  const sells = activity.filter((event) => event.fromAddress === wallet);
+  const userMints = activity.filter(
+    (event) => event.type === "mint" && event.toAddress === wallet
+  );
 
   const timestamps = [
     ...activity.map((event) => event.timestamp),
