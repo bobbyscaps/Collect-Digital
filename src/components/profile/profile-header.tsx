@@ -154,6 +154,12 @@ export function ProfileHeader() {
             value={profile.collectPoints.toLocaleString()}
           />
         </div>
+
+        <p className="mt-3 text-xs text-muted-foreground">
+          {profile.ratingSource === "onchain"
+            ? "Collector rating derived from on-chain activity."
+            : "Collector rating based on sample data."}
+        </p>
       </div>
     </div>
   );

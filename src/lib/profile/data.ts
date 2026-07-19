@@ -1,5 +1,17 @@
 import type { User } from "@privy-io/react-auth";
 
+import { MOCK_WALLET_METRICS } from "@/lib/mock-data";
+import {
+  computeCollectorSubScores,
+  computeWalletCollectorRating,
+  type CollectorSubScores,
+} from "@/lib/scoring/wallet-collector";
+import type {
+  WalletBehaviorMetrics,
+  WalletCollectorRating,
+  WalletIdentityType,
+} from "@/lib/types";
+
 export type SocialAccount = {
   platform: string;
   handle: string;
@@ -56,6 +68,12 @@ export type Profile = {
   walletVerified: boolean;
   privacy: ProfilePrivacy;
   portfolio: ProfilePortfolio;
+  /** Full collector rating from the scoring engine (identity, badges, strengths…). */
+  rating: WalletCollectorRating;
+  /** The six normalized sub-scores that blend into the Collector Score. */
+  subScores: CollectorSubScores;
+  /** Whether the rating was derived from on-chain history or synthetic metrics. */
+  ratingSource: "onchain" | "synthetic";
 };
 
 /** Compact, public-safe representation of a collector used in search results. */
@@ -72,20 +90,18 @@ export type CollectorPreview = {
   walletVerified: boolean;
 };
 
-const MAIN_BADGES = [
-  "Diamond Hands",
-  "Blue-Chip Collector",
-  "Community Builder",
-  "Early Adopter",
-  "Tastemaker",
-];
-
-const COLLECTOR_STYLES = [
-  "Long-term holder",
-  "Active flipper",
-  "Art-first curator",
-  "Community-first collector",
-];
+export const IDENTITY_LABELS: Record<WalletIdentityType, string> = {
+  diamond_collector: "Diamond Collector",
+  true_collector: "True Collector",
+  curator: "Curator",
+  community_holder: "Community Holder",
+  early_minter: "Early Minter",
+  whale_collector: "Whale Collector",
+  flipper: "Flipper",
+  elite_flipper: "Elite Flipper",
+  paper_hands: "Paper Hands",
+  dormant_wallet: "Dormant Wallet",
+};
 
 function slugify(input: string): string {
   return input
@@ -125,12 +141,59 @@ export function deriveUsername(user: User): string {
   if (user.google?.email) return slugify(user.google.email.split("@")[0]);
   if (user.apple?.email) return slugify(user.apple.email.split("@")[0]);
   if (user.email?.address) return slugify(user.email.address.split("@")[0]);
-  if (user.wallet?.address) return user.wallet.address.slice(2, 10).toLowerCase();
+  if (user.wallet?.address) return user.wallet.address.toLowerCase();
   return "me";
 }
 
 export function formatEth(value: number): string {
   return `${value.toFixed(2)} ETH`;
+}
+
+/** The synthetic wallet metrics used for a username (no on-chain data). */
+export function getSyntheticWalletMetrics(username: string): WalletBehaviorMetrics {
+  return buildWalletMetrics(hash(slugify(username) || "collector"));
+}
+
+/** Deterministic pseudo-random value in [0,1) from a seed + salt. */
+function pseudo(seed: number, salt: number): number {
+  return ((seed ^ (salt * 2654435761)) >>> 0) / 0xffffffff;
+}
+
+/**
+ * Build deterministic-but-varied wallet behavior metrics for a username so the
+ * collector scoring engine produces a distinct, stable rating per collector.
+ *
+ * These are still synthetic inputs (there is no on-chain behavior analysis yet),
+ * but the score, identity, badges, strengths and weaknesses are now produced by
+ * the real scoring engine rather than a hash. Replace this with metrics derived
+ * from wallet transaction history to make the score fully real.
+ */
+function buildWalletMetrics(seed: number): WalletBehaviorMetrics {
+  const r = (salt: number, min: number, max: number) =>
+    min + pseudo(seed, salt) * (max - min);
+  const round2 = (value: number) => Math.round(value * 100) / 100;
+
+  return {
+    ...MOCK_WALLET_METRICS,
+    walletAgeDays: Math.round(r(1, 120, 3200)),
+    avgHoldDays: Math.round(r(2, 12, 420)),
+    boughtCount: Math.round(r(3, 20, 300)),
+    soldCount: Math.round(r(4, 5, 220)),
+    mintCount: Math.round(r(5, 0, 60)),
+    saleFrequencyPerMonth: round2(r(6, 0.1, 3)),
+    realizedPnlEth: round2(r(7, -8, 40)),
+    unrealizedValueEth: round2(r(8, 2, 400)),
+    heldOver30Pct: Math.round(r(9, 30, 95)),
+    heldOver90Pct: Math.round(r(10, 15, 90)),
+    heldOver180Pct: Math.round(r(11, 5, 80)),
+    heldOver365Pct: Math.round(r(12, 0, 60)),
+    sellIntoPumpRate: round2(r(13, 0.05, 0.9)),
+    prePumpBuyRate: round2(r(14, 0.05, 0.9)),
+    diversityScore: round2(r(15, 0.2, 0.95)),
+    ecosystemConcentrationPct: round2(r(16, 0.2, 0.95)),
+    communityParticipationScore: round2(r(17, 0.1, 0.95)),
+    collectionQualityScore: round2(r(18, 0.2, 0.95)),
+  };
 }
 
 /**
@@ -144,8 +207,10 @@ export function getProfile(usernameInput: string): Profile {
   const displayName = toDisplayName(username);
   const initials = toInitials(displayName);
 
-  const collectorScore = 62 + (seed % 34);
-  const flipperScore = 40 + ((seed >> 3) % 55);
+  const metrics = buildWalletMetrics(seed);
+  const rating = computeWalletCollectorRating(metrics);
+  const subScores = computeCollectorSubScores(metrics);
+
   const collectPoints = 1200 + (seed % 8800);
   const profileCompletion = 55 + (seed % 45);
 
@@ -174,11 +239,11 @@ export function getProfile(usernameInput: string): Profile {
     ],
     favoriteChains: ["Ethereum", "Base", "Solana"],
     interests: ["PFPs", "Generative Art", "Onchain Gaming", "Music NFTs"],
-    collectorStyle: COLLECTOR_STYLES[seed % COLLECTOR_STYLES.length],
-    mainBadge: MAIN_BADGES[seed % MAIN_BADGES.length],
-    secondaryBadges: ["Early Adopter", "Verified Wallet", "Community Contributor"],
-    collectorScore,
-    flipperScore,
+    collectorStyle: IDENTITY_LABELS[rating.walletIdentity],
+    mainBadge: rating.mainBadge.label,
+    secondaryBadges: rating.secondaryBadges.map((badge) => badge.label).slice(0, 3),
+    collectorScore: rating.collectorScore,
+    flipperScore: rating.flipperScore,
     collectPoints,
     profileCompletion,
     recentPointActivity: [
@@ -203,6 +268,9 @@ export function getProfile(usernameInput: string): Profile {
       collectionCount: 8 + (seed % 40),
       hiddenCount: seed % 8,
     },
+    rating,
+    subScores,
+    ratingSource: "synthetic",
   };
 }
 

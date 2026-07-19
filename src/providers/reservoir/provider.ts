@@ -2,11 +2,13 @@ import { setProviderCache, getProviderCache } from "@/lib/providers/cache";
 import type {
   NftDataProvider,
   NormalizedCollection,
+  NormalizedHeldToken,
   NormalizedHistoricalPoint,
   NormalizedListing,
   NormalizedOffer,
   NormalizedPortfolioValue,
   NormalizedSale,
+  NormalizedWalletActivity,
   NormalizedWalletNft,
   ProviderQueryOptions,
 } from "@/providers/types";
@@ -25,6 +27,21 @@ function toEth(value: unknown): number {
   if (typeof value === "string") {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+/** Normalize a Reservoir timestamp (ISO string or unix seconds) to epoch ms. */
+function toEpochMs(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    // Reservoir activity timestamps are unix seconds.
+    return value > 1e12 ? value : value * 1000;
+  }
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric > 1e12 ? numeric : numeric * 1000;
   }
   return 0;
 }
@@ -253,6 +270,110 @@ export class ReservoirProvider implements NftDataProvider {
 
   async getWalletNFTs(): Promise<NormalizedWalletNft[]> {
     return [];
+  }
+
+  /** Current NFT holdings for a wallet, including when each was acquired. */
+  async getUserTokens(
+    address: string,
+    options?: ProviderQueryOptions
+  ): Promise<NormalizedHeldToken[]> {
+    try {
+      type Response = {
+        tokens: {
+          token?: {
+            collection?: {
+              id?: string;
+              name?: string;
+              floorAskPrice?: { amount?: { native?: number } };
+            };
+          };
+          ownership?: { acquiredAt?: string };
+        }[];
+        continuation?: string | null;
+      };
+
+      const pageLimit = Math.min(options?.limit ?? 200, 200);
+      const held: NormalizedHeldToken[] = [];
+      let continuation: string | null | undefined;
+      let pages = 0;
+
+      do {
+        const query = `/users/${encodeURIComponent(address)}/tokens/v7?limit=${Math.min(
+          pageLimit,
+          50
+        )}&sortBy=acquiredAt${continuation ? `&continuation=${continuation}` : ""}`;
+        const data = await this.fetchJson<Response>(query);
+        for (const entry of data.tokens ?? []) {
+          const collection = entry.token?.collection;
+          held.push({
+            collectionId: String(collection?.id ?? "unknown"),
+            collectionName: String(collection?.name ?? "Unknown"),
+            acquiredAt: toEpochMs(entry.ownership?.acquiredAt),
+            floorEth: toEth(collection?.floorAskPrice?.amount?.native),
+          });
+        }
+        continuation = data.continuation;
+        pages += 1;
+      } while (continuation && held.length < pageLimit && pages < 5);
+
+      return held;
+    } catch {
+      return [];
+    }
+  }
+
+  /** Buy/sell/mint/transfer activity for a wallet, newest first. */
+  async getUserActivity(
+    address: string,
+    options?: ProviderQueryOptions
+  ): Promise<NormalizedWalletActivity[]> {
+    try {
+      type Response = {
+        activities: {
+          type?: string;
+          timestamp?: number;
+          price?: { amount?: { native?: number } } | number;
+          fromAddress?: string;
+          toAddress?: string;
+          collection?: { collectionId?: string };
+        }[];
+        continuation?: string | null;
+      };
+
+      const target = Math.min(options?.limit ?? 500, 1000);
+      const events: NormalizedWalletActivity[] = [];
+      let continuation: string | null | undefined;
+      let pages = 0;
+
+      do {
+        const query = `/users/${encodeURIComponent(
+          address
+        )}/activity/v6?limit=50&types=sale&types=mint&types=transfer${
+          continuation ? `&continuation=${continuation}` : ""
+        }`;
+        const data = await this.fetchJson<Response>(query);
+        for (const activity of data.activities ?? []) {
+          const priceEth =
+            typeof activity.price === "number"
+              ? activity.price
+              : toEth(activity.price?.amount?.native);
+          events.push({
+            type: String(activity.type ?? "unknown"),
+            timestamp: toEpochMs(activity.timestamp),
+            priceEth,
+            fromAddress: activity.fromAddress?.toLowerCase(),
+            toAddress: activity.toAddress?.toLowerCase(),
+            collectionId: activity.collection?.collectionId,
+          });
+        }
+        continuation = data.continuation;
+        pages += 1;
+      } while (continuation && events.length < target && pages < 20);
+
+      return events;
+    } catch {
+      return [];
+    }
   }
 
   async getPortfolioValue(): Promise<NormalizedPortfolioValue | null> {
