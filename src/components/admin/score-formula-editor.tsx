@@ -38,6 +38,7 @@ const LABELS: Record<ScoreCategoryKey, string> = {
 interface FormulaEditorProps {
   version: ScoringModelVersion;
   onSimulate: (version: ScoringModelVersion) => Promise<void>;
+  onSaveNew: (version: ScoringModelVersion, name: string) => Promise<void>;
 }
 
 function SortableRow({
@@ -88,13 +89,19 @@ function SortableRow({
   );
 }
 
-export function ScoreFormulaEditor({ version, onSimulate }: FormulaEditorProps) {
+export function ScoreFormulaEditor({
+  version,
+  onSimulate,
+  onSaveNew,
+}: FormulaEditorProps) {
   const sensors = useSensors(useSensor(PointerSensor));
   const [localVersion, setLocalVersion] = useState<ScoringModelVersion>(version);
   const [orderedKeys, setOrderedKeys] = useState<ScoreCategoryKey[]>(
     Object.keys(version.categoryWeights) as ScoreCategoryKey[]
   );
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [newName, setNewName] = useState("");
 
   const totalPoints = useMemo(
     () =>
@@ -143,6 +150,14 @@ export function ScoreFormulaEditor({ version, onSimulate }: FormulaEditorProps) 
     setLoading(false);
   }
 
+  async function handleSaveNew() {
+    if (!newName.trim()) return;
+    setSaving(true);
+    await onSaveNew(localVersion, newName.trim());
+    setSaving(false);
+    setNewName("");
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -175,10 +190,27 @@ export function ScoreFormulaEditor({ version, onSimulate }: FormulaEditorProps) 
           </SortableContext>
         </DndContext>
 
-        <div className="flex items-center justify-end">
+        <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
           <Button onClick={handleSimulate} disabled={loading}>
             {loading ? "Running simulation..." : "Run live simulation"}
           </Button>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              placeholder="New version name"
+              className="h-9 w-44 rounded-md border border-white/15 bg-white/5 px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-white/30"
+            />
+            <Button
+              variant="outline"
+              className="border-white/15 bg-white/5 hover:bg-white/10"
+              onClick={handleSaveNew}
+              disabled={saving || !newName.trim()}
+            >
+              {saving ? "Saving..." : "Save as new version"}
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-3 border-t pt-4">
