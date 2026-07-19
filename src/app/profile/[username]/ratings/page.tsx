@@ -10,7 +10,10 @@ import {
   Stat,
   TagChips,
 } from "@/components/profile/ui";
-import { formatEth } from "@/lib/profile/data";
+import {
+  COLLECTOR_SUB_SCORE_LABELS,
+  type CollectorSubScores,
+} from "@/lib/scoring/wallet-collector";
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
   return (
@@ -29,8 +32,13 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
+const SUB_SCORE_ORDER = Object.keys(
+  COLLECTOR_SUB_SCORE_LABELS
+) as (keyof CollectorSubScores)[];
+
 export default function RatingsPage() {
   const { profile, canViewFinancials, viewerAuthenticated } = useProfile();
+  const { rating, subScores } = profile;
 
   if (!viewerAuthenticated) {
     return (
@@ -53,85 +61,92 @@ export default function RatingsPage() {
   return (
     <div className="space-y-6">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Collector Score" value={profile.collectorScore} hint="Top 8% of collectors" />
-        <Stat label="Flipper Score" value={profile.flipperScore} hint="Balanced trader" />
+        <Stat label="Collector Score" value={rating.collectorScore} />
+        <Stat label="Flipper Score" value={rating.flipperScore} />
         <Stat label="Collector Identity" value={profile.collectorStyle} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <ProfileSection title="Score Breakdown">
+        <ProfileSection
+          title="Score Breakdown"
+          description="Normalized sub-scores that blend into the Collector Score."
+        >
           <div className="space-y-4">
-            <ScoreBar label="Conviction" value={88} />
-            <ScoreBar label="Diversification" value={72} />
-            <ScoreBar label="Timing" value={64} />
-            <ScoreBar label="Community" value={91} />
-            <ScoreBar label="Longevity" value={80} />
+            {SUB_SCORE_ORDER.map((key) => (
+              <ScoreBar
+                key={key}
+                label={COLLECTOR_SUB_SCORE_LABELS[key]}
+                value={Math.round(subScores[key])}
+              />
+            ))}
           </div>
         </ProfileSection>
 
         <div className="space-y-6">
           <ProfileSection title="Strengths">
-            <div className="space-y-2">
-              {["Blue-chip conviction", "Strong community participation", "Long holding periods"].map(
-                (item) => (
+            {rating.strengths.length > 0 ? (
+              <div className="space-y-2">
+                {rating.strengths.map((item) => (
                   <p key={item} className="flex items-center gap-2 text-sm">
                     <ThumbsUp className="h-4 w-4 text-emerald-300" />
                     {item}
                   </p>
-                )
-              )}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No standout strengths detected yet.
+              </p>
+            )}
           </ProfileSection>
           <ProfileSection title="Weaknesses">
-            <div className="space-y-2">
-              {["Concentrated in a few collections", "Limited activity on newer chains"].map(
-                (item) => (
+            {rating.weaknesses.length > 0 ? (
+              <div className="space-y-2">
+                {rating.weaknesses.map((item) => (
                   <p key={item} className="flex items-center gap-2 text-sm">
                     <ThumbsDown className="h-4 w-4 text-amber-300" />
                     {item}
                   </p>
-                )
-              )}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No notable weaknesses detected.
+              </p>
+            )}
           </ProfileSection>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <ProfileSection title="Best Collection Calls">
-          <TagChips items={["Pudgy Penguins", "Azuki", "Milady"]} />
+          <TagChips items={rating.bestCollectionCalls} />
         </ProfileSection>
         <ProfileSection title="Most Profitable Flips">
           {canViewFinancials ? (
             <ul className="space-y-2 text-sm">
-              <li className="flex justify-between">
-                <span className="text-muted-foreground">Cool Cat #900</span>
-                <span className="font-semibold text-emerald-300">
-                  +{formatEth(4.2)}
-                </span>
-              </li>
-              <li className="flex justify-between">
-                <span className="text-muted-foreground">Doodle #12</span>
-                <span className="font-semibold text-emerald-300">
-                  +{formatEth(2.7)}
-                </span>
-              </li>
+              {rating.mostProfitableFlips.map((flip) => (
+                <li key={flip} className="text-muted-foreground">
+                  {flip}
+                </li>
+              ))}
             </ul>
           ) : (
             <PrivateValue label="Financials private" />
           )}
         </ProfileSection>
         <ProfileSection title="Longest-Held NFTs">
-          <TagChips items={["BAYC #500 · 3y", "Punk #77 · 2y", "Squiggle #9 · 2y"]} />
+          <TagChips items={rating.longestHeldNfts} />
         </ProfileSection>
       </div>
 
       <ProfileSection title="Badge History">
         <div className="space-y-2">
-          {[profile.mainBadge, ...profile.secondaryBadges].map((badge) => (
-            <p key={badge} className="flex items-center gap-2 text-sm">
+          {[rating.mainBadge, ...rating.secondaryBadges].map((badge) => (
+            <p key={badge.key} className="flex items-center gap-2 text-sm">
               <Award className="h-4 w-4 text-indigo-300" />
-              {badge}
+              <span className="font-medium">{badge.label}</span>
+              <span className="text-muted-foreground">— {badge.description}</span>
             </p>
           ))}
         </div>
