@@ -149,6 +149,11 @@ export function formatEth(value: number): string {
   return `${value.toFixed(2)} ETH`;
 }
 
+/** The synthetic wallet metrics used for a username (no on-chain data). */
+export function getSyntheticWalletMetrics(username: string): WalletBehaviorMetrics {
+  return buildWalletMetrics(hash(slugify(username) || "collector"));
+}
+
 /** Deterministic pseudo-random value in [0,1) from a seed + salt. */
 function pseudo(seed: number, salt: number): number {
   return ((seed ^ (salt * 2654435761)) >>> 0) / 0xffffffff;

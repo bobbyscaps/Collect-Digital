@@ -134,8 +134,10 @@ export interface CollectorSubScores {
   walletLongevity: number;
 }
 
-/** Category weights (out of 1.0) used to blend the collector sub-scores. */
-export const COLLECTOR_SUB_SCORE_WEIGHTS: Record<keyof CollectorSubScores, number> = {
+export type CollectorSubScoreWeights = Record<keyof CollectorSubScores, number>;
+
+/** Default category weights (out of 1.0) used to blend the collector sub-scores. */
+export const COLLECTOR_SUB_SCORE_WEIGHTS: CollectorSubScoreWeights = {
   holdingBehavior: 0.25,
   collectionQuality: 0.2,
   profitabilityTiming: 0.2,
@@ -143,6 +145,27 @@ export const COLLECTOR_SUB_SCORE_WEIGHTS: Record<keyof CollectorSubScores, numbe
   communityParticipation: 0.1,
   walletLongevity: 0.1,
 };
+
+export const COLLECTOR_SUB_SCORE_ORDER = Object.keys(
+  COLLECTOR_SUB_SCORE_WEIGHTS
+) as (keyof CollectorSubScores)[];
+
+/** Blend the sub-scores into an overall 0-100 score using (any-scale) weights. */
+export function blendCollectorScore(
+  subScores: CollectorSubScores,
+  weights: CollectorSubScoreWeights = COLLECTOR_SUB_SCORE_WEIGHTS
+): number {
+  const total = COLLECTOR_SUB_SCORE_ORDER.reduce(
+    (acc, key) => acc + Math.max(0, weights[key] ?? 0),
+    0
+  );
+  if (total <= 0) return 0;
+  const weighted = COLLECTOR_SUB_SCORE_ORDER.reduce(
+    (acc, key) => acc + subScores[key] * Math.max(0, weights[key] ?? 0),
+    0
+  );
+  return clamp(weighted / total);
+}
 
 export const COLLECTOR_SUB_SCORE_LABELS: Record<keyof CollectorSubScores, string> = {
   holdingBehavior: "Holding Behavior",
@@ -179,20 +202,12 @@ export function computeCollectorSubScores(
 }
 
 export function computeWalletCollectorRating(
-  metrics: WalletBehaviorMetrics
+  metrics: WalletBehaviorMetrics,
+  weights: CollectorSubScoreWeights = COLLECTOR_SUB_SCORE_WEIGHTS
 ): WalletCollectorRating {
   const subScores = computeCollectorSubScores(metrics);
 
-  const collectorScore = clamp(
-    subScores.holdingBehavior * COLLECTOR_SUB_SCORE_WEIGHTS.holdingBehavior +
-      subScores.collectionQuality * COLLECTOR_SUB_SCORE_WEIGHTS.collectionQuality +
-      subScores.profitabilityTiming *
-        COLLECTOR_SUB_SCORE_WEIGHTS.profitabilityTiming +
-      subScores.activityLevel * COLLECTOR_SUB_SCORE_WEIGHTS.activityLevel +
-      subScores.communityParticipation *
-        COLLECTOR_SUB_SCORE_WEIGHTS.communityParticipation +
-      subScores.walletLongevity * COLLECTOR_SUB_SCORE_WEIGHTS.walletLongevity
-  );
+  const collectorScore = blendCollectorScore(subScores, weights);
 
   const flipperScore = clamp(
     (metrics.saleFrequencyPerMonth * 18 +

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { FlaskConical } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useProfile } from "./profile-context";
@@ -61,6 +62,15 @@ export function ProfileTabs() {
             </Link>
           );
         })}
+
+        {/* Score Lab — open to everyone for now (to be locked down later). */}
+        <Link
+          href="/collector-lab"
+          className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-md px-4 py-3 text-sm font-medium text-indigo-300 transition-colors hover:text-indigo-200"
+        >
+          <FlaskConical className="h-4 w-4" />
+          Score Lab
+        </Link>
       </div>
     </nav>
   );
