@@ -18,7 +18,6 @@ import {
   usePrivy,
   useLogin,
   useLoginWithOAuth,
-  useConnectOrCreateWallet,
   type OAuthProviderType,
   type User,
 } from "@privy-io/react-auth";
@@ -119,10 +118,6 @@ export default function LandingPage() {
   const { initOAuth, loading: oauthLoading } = useLoginWithOAuth({
     onComplete: ({ user }) => goToProfile(user),
   });
-  const { connectOrCreateWallet } = useConnectOrCreateWallet({
-    onSuccess: ({ wallet }) =>
-      router.push(`/profile/${wallet.address.slice(2, 10).toLowerCase()}`),
-  });
 
   const authDisabled = !ready;
 
@@ -132,7 +127,9 @@ export default function LandingPage() {
     });
   };
 
-  const handleConnectWallet = () => connectOrCreateWallet();
+  const handleConnectWallet = () => {
+    login({ loginMethods: ["wallet"] });
+  };
 
   return (
     <div className="relative min-h-screen overflow-hidden">
