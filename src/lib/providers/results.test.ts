@@ -54,6 +54,9 @@ test("provider result statuses discriminate success/empty/failure/unsupported", 
   assert.equal(isProviderSuccessLikeResult(failure), false);
   assert.equal(isProviderFailureResult(failure), true);
   assert.equal(isProviderUnsupportedResult(unsupported), true);
+  if (!isProviderUnsupportedResult(unsupported)) {
+    assert.fail("Expected unsupported result type guard to narrow correctly.");
+  }
   assert.equal(unsupported.error.category, "unsupported");
 });
 
