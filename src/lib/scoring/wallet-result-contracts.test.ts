@@ -5,7 +5,9 @@ import { MOCK_WALLET_METRICS } from "@/lib/mock-data";
 import { createProviderResult } from "@/lib/providers/results";
 import {
   createWalletMetricsDerivationResult,
-  isWalletMetricsDerivationLiveDataStatus,
+  hasWalletMetricsDerivationSuccessfulData,
+  isWalletMetricsDerivationRecoverableProviderFailure,
+  isWalletMetricsDerivationRequestValid,
   isWalletMetricsDerivationStatus,
 } from "./wallet-result-contracts";
 
@@ -85,9 +87,22 @@ test("per-chain derivation result keeps raw data separate and immutable", () => 
   });
 });
 
-test("live-data status helper never implies synthetic requirements", () => {
-  assert.equal(isWalletMetricsDerivationLiveDataStatus("ok"), true);
-  assert.equal(isWalletMetricsDerivationLiveDataStatus("partial"), true);
-  assert.equal(isWalletMetricsDerivationLiveDataStatus("provider_failure"), true);
-  assert.equal(isWalletMetricsDerivationLiveDataStatus("invalid_address"), false);
+test("derivation helpers separate request validity, successful data, and provider failures", () => {
+  assert.equal(isWalletMetricsDerivationRequestValid("ok"), true);
+  assert.equal(isWalletMetricsDerivationRequestValid("provider_failure"), true);
+  assert.equal(isWalletMetricsDerivationRequestValid("invalid_address"), false);
+
+  assert.equal(hasWalletMetricsDerivationSuccessfulData("ok"), true);
+  assert.equal(hasWalletMetricsDerivationSuccessfulData("partial"), true);
+  assert.equal(hasWalletMetricsDerivationSuccessfulData("empty_wallet"), false);
+  assert.equal(hasWalletMetricsDerivationSuccessfulData("provider_failure"), false);
+
+  assert.equal(
+    isWalletMetricsDerivationRecoverableProviderFailure("provider_failure"),
+    true
+  );
+  assert.equal(
+    isWalletMetricsDerivationRecoverableProviderFailure("partial"),
+    false
+  );
 });

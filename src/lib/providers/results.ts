@@ -62,7 +62,7 @@ export interface ProviderFailureResult<T>
 
 export interface ProviderUnsupportedResult<T>
   extends ProviderResultBase<T, "unsupported"> {
-  readonly error?: Readonly<ProviderError>;
+  readonly error: Readonly<ProviderError>;
 }
 
 export type ProviderResult<T> =

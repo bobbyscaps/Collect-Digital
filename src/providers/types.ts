@@ -104,6 +104,11 @@ export interface NormalizedWalletActivity {
   txHash?: string;
   logIndex?: number;
   blockNumber?: number;
+  /**
+   * Stable dedup key format for future multi-chain aggregation:
+   * `${chain}:${txHash}:${logIndexOrZero}` with lowercase hex tx hash and a
+   * numeric `logIndexOrZero` fallback of `0` when unavailable.
+   */
   eventId?: string;
   provider?: ProviderKey;
   direction?: WalletActivityDirection;
@@ -122,6 +127,11 @@ export interface ChainAwareNormalizedWalletActivity
   chain: SupportedChainKey;
   chainId: SupportedChainId;
   txHash: string;
+  /**
+   * Stable dedup key format for future multi-chain aggregation:
+   * `${chain}:${txHash}:${logIndexOrZero}` with lowercase hex tx hash and a
+   * numeric `logIndexOrZero` fallback of `0` when unavailable.
+   */
   eventId: string;
   provider: ProviderKey;
   direction: WalletActivityDirection;

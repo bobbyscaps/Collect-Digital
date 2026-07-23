@@ -54,6 +54,7 @@ test("provider result statuses discriminate success/empty/failure/unsupported", 
   assert.equal(isProviderSuccessLikeResult(failure), false);
   assert.equal(isProviderFailureResult(failure), true);
   assert.equal(isProviderUnsupportedResult(unsupported), true);
+  assert.equal(unsupported.error.category, "unsupported");
 });
 
 test("provider envelopes are immutable snapshots", () => {

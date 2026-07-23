@@ -122,8 +122,20 @@ export function createWalletMetricsDerivationResult(
   });
 }
 
-export function isWalletMetricsDerivationLiveDataStatus(
+export function isWalletMetricsDerivationRequestValid(
   status: WalletMetricsDerivationStatus
 ): boolean {
   return status !== "invalid_address";
+}
+
+export function hasWalletMetricsDerivationSuccessfulData(
+  status: WalletMetricsDerivationStatus
+): boolean {
+  return status === "ok" || status === "partial";
+}
+
+export function isWalletMetricsDerivationRecoverableProviderFailure(
+  status: WalletMetricsDerivationStatus
+): boolean {
+  return status === "provider_failure";
 }
