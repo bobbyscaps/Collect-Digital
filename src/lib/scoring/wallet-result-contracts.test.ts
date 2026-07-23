@@ -81,7 +81,7 @@ test("per-chain derivation result keeps raw data separate and immutable", () => 
   assert.equal(Object.isFrozen(result.perChain), true);
   assert.equal(Object.isFrozen(result.perChain[0].raw), true);
   assert.throws(() => {
-    (result.perChain as unknown as []).push({});
+    (result.perChain as unknown as Array<unknown>).push({});
   });
 });
 

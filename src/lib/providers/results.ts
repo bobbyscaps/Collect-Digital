@@ -81,7 +81,7 @@ export function createProviderResult<T>(
       ? Object.freeze({ ...result.diagnostics })
       : undefined,
     error: result.error ? Object.freeze({ ...result.error }) : undefined,
-  });
+  }) as Readonly<ProviderResult<T>>;
 }
 
 export function isProviderResultStatus(value: string): value is ProviderResultStatus {
