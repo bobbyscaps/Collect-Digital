@@ -11,6 +11,10 @@ export const PROVIDER_KEYS = [
 
 export type ProviderKey = (typeof PROVIDER_KEYS)[number];
 
+export function isProviderKey(value: string): value is ProviderKey {
+  return PROVIDER_KEYS.includes(value as ProviderKey);
+}
+
 export const PROVIDER_CAPABILITY_KEYS = [
   "wallet_holdings",
   "wallet_activity",

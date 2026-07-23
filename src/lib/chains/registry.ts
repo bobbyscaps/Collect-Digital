@@ -106,6 +106,10 @@ export const SUPPORTED_CHAIN_KEYS = CHAIN_REGISTRY.map(
   (chain) => chain.key
 ) as readonly SupportedChainKey[];
 
+export const SUPPORTED_CHAIN_IDS = CHAIN_REGISTRY.map(
+  (chain) => chain.chainId
+) as readonly SupportedChainId[];
+
 const registryByKey = new Map<SupportedChainKey, (typeof CHAIN_REGISTRY)[number]>(
   CHAIN_REGISTRY.map((chain) => [chain.key, chain])
 );
@@ -120,6 +124,10 @@ export function listCollectorScoringEnabledChains() {
 
 export function getChainConfig(chainKey: SupportedChainKey) {
   return registryByKey.get(chainKey) ?? null;
+}
+
+export function isSupportedChainKey(value: string): value is SupportedChainKey {
+  return SUPPORTED_CHAIN_KEYS.includes(value as SupportedChainKey);
 }
 
 export function hasUniqueChainIds(chains = CHAIN_REGISTRY): boolean {
