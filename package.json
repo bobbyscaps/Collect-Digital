@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:multichain-foundation": "tsx --test src/lib/chains/*.test.ts src/lib/providers/*.test.ts"
+    "test:multichain-foundation": "tsx --test src/lib/chains/*.test.ts src/lib/providers/*.test.ts src/lib/scoring/*.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

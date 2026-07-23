@@ -1,3 +1,9 @@
+import type {
+  SupportedChainId,
+  SupportedChainKey,
+} from "@/lib/chains/registry";
+import type { ProviderKey } from "@/lib/providers/capabilities";
+
 export type ProviderName = "reservoir" | "alchemy" | "opensea" | "simplehash";
 
 export interface ProviderCollectionMetadata {
@@ -64,7 +70,23 @@ export interface NormalizedHeldToken {
   collectionName: string;
   acquiredAt: number;
   floorEth: number;
+  /**
+   * Multi-chain context (optional for legacy compatibility; required by
+   * chain-aware orchestration contracts).
+   */
+  chain?: SupportedChainKey;
+  chainId?: SupportedChainId;
+  contractAddress?: string;
+  tokenId?: string;
+  provider?: ProviderKey;
+  observedAt?: number;
 }
+
+export type WalletActivityDirection =
+  | "inbound"
+  | "outbound"
+  | "self"
+  | "unknown";
 
 export interface NormalizedWalletActivity {
   type: string;
@@ -73,6 +95,36 @@ export interface NormalizedWalletActivity {
   fromAddress?: string;
   toAddress?: string;
   collectionId?: string;
+  /**
+   * Multi-chain context (optional for legacy compatibility; required by
+   * chain-aware orchestration contracts).
+   */
+  chain?: SupportedChainKey;
+  chainId?: SupportedChainId;
+  txHash?: string;
+  logIndex?: number;
+  blockNumber?: number;
+  eventId?: string;
+  provider?: ProviderKey;
+  direction?: WalletActivityDirection;
+}
+
+export interface ChainAwareNormalizedHeldToken extends NormalizedHeldToken {
+  chain: SupportedChainKey;
+  chainId: SupportedChainId;
+  contractAddress: string;
+  provider: ProviderKey;
+  observedAt: number;
+}
+
+export interface ChainAwareNormalizedWalletActivity
+  extends NormalizedWalletActivity {
+  chain: SupportedChainKey;
+  chainId: SupportedChainId;
+  txHash: string;
+  eventId: string;
+  provider: ProviderKey;
+  direction: WalletActivityDirection;
 }
 
 export interface NormalizedWalletNft {
