@@ -117,7 +117,11 @@ export const PROVIDER_CAPABILITY_MATRIX = {
 } as const satisfies ProviderCapabilityMatrix;
 
 function getChainProfile(provider: ProviderKey, chain: SupportedChainKey) {
-  return PROVIDER_CAPABILITY_MATRIX[provider][chain];
+  const providerMatrix =
+    PROVIDER_CAPABILITY_MATRIX[provider] as Partial<
+      Record<SupportedChainKey, ProviderChainCapabilityProfile>
+    >;
+  return providerMatrix[chain];
 }
 
 export function resolveProviderCapability(
