@@ -1,12 +1,25 @@
-export type ChainEcosystem = "ethereum" | "arbitrum-orbit" | "zk-rollup";
+export type ChainNamespace = "eip155";
+
+export type ChainStack =
+  | "ethereum-l1"
+  | "op-stack"
+  | "arbitrum-one"
+  | "arbitrum-orbit"
+  | "polygon-pos"
+  | "zksync-abstract";
 
 export interface ChainRegistryEntry {
   key: string;
   displayName: string;
   chainId: number;
-  ecosystem: ChainEcosystem;
+  namespace: ChainNamespace;
+  stack: ChainStack;
   explorer: string;
-  enabled: boolean;
+  /**
+   * Controls whether the chain is eligible for Collector Scoring aggregation.
+   * This flag does not imply provider coverage or capability support.
+   */
+  collectorScoringEnabled: boolean;
 }
 
 const chainRegistry = [
@@ -14,65 +27,73 @@ const chainRegistry = [
     key: "ethereum",
     displayName: "Ethereum",
     chainId: 1,
-    ecosystem: "ethereum",
+    namespace: "eip155",
+    stack: "ethereum-l1",
     explorer: "https://etherscan.io",
-    enabled: true,
+    collectorScoringEnabled: true,
   },
   {
     key: "base",
     displayName: "Base",
     chainId: 8453,
-    ecosystem: "ethereum",
+    namespace: "eip155",
+    stack: "op-stack",
     explorer: "https://basescan.org",
-    enabled: true,
+    collectorScoringEnabled: true,
   },
   {
     key: "abstract",
     displayName: "Abstract",
     chainId: 2741,
-    ecosystem: "zk-rollup",
+    namespace: "eip155",
+    stack: "zksync-abstract",
     explorer: "https://abscan.org",
-    enabled: true,
+    collectorScoringEnabled: true,
   },
   {
     key: "apechain",
     displayName: "ApeChain",
     chainId: 33139,
-    ecosystem: "arbitrum-orbit",
+    namespace: "eip155",
+    stack: "arbitrum-orbit",
     explorer: "https://apescan.io",
-    enabled: true,
+    collectorScoringEnabled: true,
   },
   {
     key: "robinhood",
     displayName: "Robinhood Chain",
     chainId: 4663,
-    ecosystem: "arbitrum-orbit",
+    namespace: "eip155",
+    stack: "arbitrum-orbit",
     explorer: "https://robinhoodchain.blockscout.com",
-    enabled: true,
+    collectorScoringEnabled: true,
   },
   {
     key: "polygon",
     displayName: "Polygon",
     chainId: 137,
-    ecosystem: "ethereum",
+    namespace: "eip155",
+    stack: "polygon-pos",
     explorer: "https://polygonscan.com",
-    enabled: true,
+    collectorScoringEnabled: true,
   },
   {
     key: "arbitrum",
     displayName: "Arbitrum",
     chainId: 42161,
-    ecosystem: "ethereum",
+    namespace: "eip155",
+    stack: "arbitrum-one",
     explorer: "https://arbiscan.io",
-    enabled: true,
+    collectorScoringEnabled: true,
   },
   {
     key: "optimism",
     displayName: "Optimism",
     chainId: 10,
-    ecosystem: "ethereum",
+    namespace: "eip155",
+    stack: "op-stack",
     explorer: "https://optimistic.etherscan.io",
-    enabled: true,
+    collectorScoringEnabled: true,
   },
 ] as const satisfies readonly ChainRegistryEntry[];
 
@@ -93,8 +114,8 @@ export function listConfiguredChains() {
   return [...CHAIN_REGISTRY];
 }
 
-export function listEnabledChains() {
-  return CHAIN_REGISTRY.filter((chain) => chain.enabled);
+export function listCollectorScoringEnabledChains() {
+  return CHAIN_REGISTRY.filter((chain) => chain.collectorScoringEnabled);
 }
 
 export function getChainConfig(chainKey: SupportedChainKey) {

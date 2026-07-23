@@ -3,13 +3,19 @@ import test from "node:test";
 
 import {
   getProvidersForCapability,
+  hasAnyProviderCapabilitySupport,
   isProviderCapabilityUnsupported,
+  listChainsWithoutAnyCapabilitySupport,
+  listProvidersWithoutConfiguredChains,
   listUnsupportedCapabilities,
   PROVIDER_CAPABILITY_KEYS,
   PROVIDER_KEYS,
   resolveProviderCapabilities,
   resolveProviderCapability,
+  summarizeChainCapabilityCoverage,
+  validateProviderCapabilityMatrix,
 } from "./capabilities";
+import { SUPPORTED_CHAIN_KEYS } from "@/lib/chains/registry";
 
 test("provider capability resolution returns configured support levels", () => {
   assert.equal(
@@ -40,7 +46,10 @@ test("unsupported capability detection is explicit for non-integrated chains", (
 test("provider capability snapshots include every capability key", () => {
   for (const provider of PROVIDER_KEYS) {
     const snapshot = resolveProviderCapabilities(provider, "ethereum");
-    assert.deepEqual(Object.keys(snapshot).sort(), [...PROVIDER_CAPABILITY_KEYS].sort());
+    assert.deepEqual(
+      Object.keys(snapshot).sort(),
+      [...PROVIDER_CAPABILITY_KEYS].sort()
+    );
   }
 });
 
@@ -60,4 +69,49 @@ test("unsupported capability listing exposes unimplemented surfaces", () => {
   assert.ok(unsupported.includes("wallet_holdings"));
   assert.ok(unsupported.includes("sales"));
   assert.ok(!unsupported.includes("collection_metadata"));
+});
+
+test("resolved capability sets are immutable snapshots, not shared mutable defaults", () => {
+  const a = resolveProviderCapabilities("alchemy", "base");
+  const b = resolveProviderCapabilities("alchemy", "base");
+
+  assert.notStrictEqual(a, b);
+  assert.equal(Object.isFrozen(a), true);
+  assert.equal(Object.isFrozen(b), true);
+  assert.throws(() => {
+    (a as { wallet_holdings: string }).wallet_holdings = "supported";
+  });
+});
+
+test("matrix validation returns no structural capability gaps", () => {
+  assert.deepEqual(validateProviderCapabilityMatrix(), []);
+});
+
+test("coverage helpers expose meaningful unsupported-chain and empty-provider signals", () => {
+  assert.equal(hasAnyProviderCapabilitySupport("ethereum"), true);
+  assert.equal(hasAnyProviderCapabilitySupport("base"), false);
+
+  assert.deepEqual(
+    listChainsWithoutAnyCapabilitySupport(SUPPORTED_CHAIN_KEYS),
+    [
+      "base",
+      "abstract",
+      "apechain",
+      "robinhood",
+      "polygon",
+      "arbitrum",
+      "optimism",
+    ]
+  );
+
+  assert.deepEqual(listProvidersWithoutConfiguredChains(), [
+    "moralis",
+    "covalent",
+  ]);
+
+  assert.deepEqual(summarizeChainCapabilityCoverage("base"), {
+    supported: 0,
+    partial: 0,
+    unsupported: PROVIDER_KEYS.length * PROVIDER_CAPABILITY_KEYS.length,
+  });
 });

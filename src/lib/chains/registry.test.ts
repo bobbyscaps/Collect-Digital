@@ -6,7 +6,7 @@ import {
   getChainConfig,
   hasUniqueChainIds,
   listConfiguredChains,
-  listEnabledChains,
+  listCollectorScoringEnabledChains,
   SUPPORTED_CHAIN_KEYS,
 } from "./registry";
 
@@ -28,8 +28,11 @@ test("every chain ID is unique", () => {
   assert.equal(new Set(CHAIN_REGISTRY.map((chain) => chain.chainId)).size, CHAIN_REGISTRY.length);
 });
 
-test("enabled chains can be listed independently", () => {
-  assert.equal(listEnabledChains().length, CHAIN_REGISTRY.length);
+test("collector scoring enabled chains can be listed independently", () => {
+  assert.equal(
+    listCollectorScoringEnabledChains().length,
+    CHAIN_REGISTRY.length
+  );
   assert.equal(listConfiguredChains().length, CHAIN_REGISTRY.length);
 });
 
@@ -38,5 +41,26 @@ test("chain lookup resolves each configured key", () => {
     const chain = getChainConfig(key);
     assert.ok(chain);
     assert.equal(chain.key, key);
+  }
+});
+
+test("all configured chains use eip155 namespace and explicit stack classifications", () => {
+  for (const chain of CHAIN_REGISTRY) {
+    assert.equal(chain.namespace, "eip155");
+  }
+
+  const expectedStacks = new Map([
+    ["ethereum", "ethereum-l1"],
+    ["base", "op-stack"],
+    ["abstract", "zksync-abstract"],
+    ["apechain", "arbitrum-orbit"],
+    ["robinhood", "arbitrum-orbit"],
+    ["polygon", "polygon-pos"],
+    ["arbitrum", "arbitrum-one"],
+    ["optimism", "op-stack"],
+  ]);
+
+  for (const chain of CHAIN_REGISTRY) {
+    assert.equal(chain.stack, expectedStacks.get(chain.key));
   }
 });
