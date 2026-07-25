@@ -68,5 +68,5 @@ Future background workers should reuse this information.
 
 ## Future boundary
 
-Future collector intelligence (PR6+) will consume these normalized holdings.
-This PR does not begin that analysis engine.
+Collector inventory analysis (PR6) consumes these normalized holdings in a
+read-only fashion. Inventory sync never performs analysis or scoring.

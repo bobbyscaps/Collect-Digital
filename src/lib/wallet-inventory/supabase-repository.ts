@@ -186,6 +186,49 @@ export function createSupabaseWalletInventoryRepository(): WalletInventoryReposi
       return Object.freeze((data as WalletHoldingRow[]).map(mapHolding));
     },
 
+    async listHoldingsByWallets(
+      walletIds: readonly string[]
+    ): Promise<readonly NormalizedHolding[]> {
+      if (walletIds.length === 0) return Object.freeze([]);
+
+      const client = requireClient();
+      const { data, error } = await client
+        .from("wallet_holdings")
+        .select("*")
+        .in("wallet_id", [...walletIds])
+        .order("wallet_id", { ascending: true })
+        .order("contract_address", { ascending: true })
+        .order("token_id", { ascending: true });
+
+      if (error) {
+        throw new Error(
+          `Failed to list holdings for wallets: ${error.message}`
+        );
+      }
+
+      return Object.freeze((data as WalletHoldingRow[]).map(mapHolding));
+    },
+
+    async listHoldingsByCollection(
+      collectionId: string
+    ): Promise<readonly NormalizedHolding[]> {
+      const client = requireClient();
+      const { data, error } = await client
+        .from("wallet_holdings")
+        .select("*")
+        .eq("collection_id", collectionId)
+        .order("wallet_id", { ascending: true })
+        .order("token_id", { ascending: true });
+
+      if (error) {
+        throw new Error(
+          `Failed to list holdings by collection: ${error.message}`
+        );
+      }
+
+      return Object.freeze((data as WalletHoldingRow[]).map(mapHolding));
+    },
+
     async removeHoldingsNotIn(
       walletId: string,
       keepKeys: ReadonlySet<string>

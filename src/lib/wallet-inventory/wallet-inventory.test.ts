@@ -93,6 +93,8 @@ test("repository contract exposes required inventory methods", () => {
     createInMemoryWalletInventoryRepository();
   assert.equal(typeof repository.upsertHoldings, "function");
   assert.equal(typeof repository.listHoldingsByWallet, "function");
+  assert.equal(typeof repository.listHoldingsByWallets, "function");
+  assert.equal(typeof repository.listHoldingsByCollection, "function");
   assert.equal(typeof repository.removeHoldingsNotIn, "function");
   assert.equal(typeof repository.replaceWalletInventory, "function");
   assert.equal(typeof repository.startSync, "function");

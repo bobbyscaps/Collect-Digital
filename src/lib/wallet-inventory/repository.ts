@@ -46,6 +46,20 @@ export interface WalletInventoryRepository {
   ): Promise<readonly NormalizedHolding[]>;
   listHoldingsByWallet(walletId: string): Promise<readonly NormalizedHolding[]>;
   /**
+   * Read-only: retrieve normalized holdings for many wallets (order undefined).
+   * Used by collector analysis; never mutates inventory.
+   */
+  listHoldingsByWallets(
+    walletIds: readonly string[]
+  ): Promise<readonly NormalizedHolding[]>;
+  /**
+   * Read-only: retrieve holdings grouped by stable collection identity
+   * (`${chainNamespace}:${contractAddress}`).
+   */
+  listHoldingsByCollection(
+    collectionId: string
+  ): Promise<readonly NormalizedHolding[]>;
+  /**
    * Removes holdings for a wallet whose identity keys are not in keepKeys.
    * keepKeys use holdingIdentityKey(...) format.
    * Callers must only invoke this after a complete successful provider fetch.
@@ -177,6 +191,56 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
           .sort((a, b) => {
             const byContract = a.contractAddress.localeCompare(b.contractAddress);
             if (byContract !== 0) return byContract;
+            return a.tokenId.localeCompare(b.tokenId);
+          })
+          .map(freezeHolding)
+      );
+    },
+
+    async listHoldingsByWallets(
+      walletIds: readonly string[]
+    ): Promise<readonly NormalizedHolding[]> {
+      if (walletIds.length === 0) return Object.freeze([]);
+
+      const wanted = new Set(walletIds);
+      const results: NormalizedHolding[] = [];
+      for (const walletId of wanted) {
+        const identities = holdingsByWallet.get(walletId);
+        if (!identities) continue;
+        for (const identity of identities) {
+          const holding = holdings.get(identity);
+          if (holding) results.push(holding);
+        }
+      }
+
+      return Object.freeze(
+        results
+          .sort((a, b) => {
+            const byWallet = a.walletId.localeCompare(b.walletId);
+            if (byWallet !== 0) return byWallet;
+            const byContract = a.contractAddress.localeCompare(b.contractAddress);
+            if (byContract !== 0) return byContract;
+            return a.tokenId.localeCompare(b.tokenId);
+          })
+          .map(freezeHolding)
+      );
+    },
+
+    async listHoldingsByCollection(
+      collectionId: string
+    ): Promise<readonly NormalizedHolding[]> {
+      const results: NormalizedHolding[] = [];
+      for (const holding of holdings.values()) {
+        if (holding.collectionId === collectionId) {
+          results.push(holding);
+        }
+      }
+
+      return Object.freeze(
+        results
+          .sort((a, b) => {
+            const byWallet = a.walletId.localeCompare(b.walletId);
+            if (byWallet !== 0) return byWallet;
             return a.tokenId.localeCompare(b.tokenId);
           })
           .map(freezeHolding)
