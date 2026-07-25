@@ -1,16 +1,22 @@
 import { createClient } from "@supabase/supabase-js";
 
 import { env } from "@/lib/env";
+import type { WalletChainNamespace } from "@/lib/profile-wallets/domain";
 import type {
+  AssetStandard,
   NormalizedHolding,
   WalletInventorySync,
   WalletInventorySyncStatus,
-  AssetStandard,
 } from "@/lib/wallet-inventory/domain";
-import { holdingIdentityKey } from "@/lib/wallet-inventory/domain";
-import type { WalletChainNamespace } from "@/lib/profile-wallets/domain";
+import {
+  computeSyncDurationMs,
+  holdingIdentityKey,
+  isHoldingUnchanged,
+} from "@/lib/wallet-inventory/domain";
 import type {
   CompleteInventorySyncInput,
+  ReplaceWalletInventoryInput,
+  ReplaceWalletInventoryResult,
   StartInventorySyncInput,
   UpsertHoldingInput,
   WalletInventoryRepository,
@@ -40,6 +46,7 @@ interface WalletInventorySyncRow {
   sync_status: WalletInventorySyncStatus;
   sync_started_at: string;
   sync_completed_at: string | null;
+  duration_ms: number | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;
@@ -92,6 +99,7 @@ function mapSync(row: WalletInventorySyncRow): WalletInventorySync {
     syncStatus: row.sync_status,
     syncStartedAt: row.sync_started_at,
     syncCompletedAt: row.sync_completed_at,
+    durationMs: row.duration_ms,
     errorMessage: row.error_message,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -123,19 +131,41 @@ export function createSupabaseWalletInventoryRepository(): WalletInventoryReposi
       if (holdings.length === 0) return Object.freeze([]);
 
       const client = requireClient();
-      const rows = holdings.map(holdingToRow);
-      const { data, error } = await client
-        .from("wallet_holdings")
-        .upsert(rows, {
-          onConflict: "wallet_id,chain_namespace,contract_address,token_id",
-        })
-        .select("*");
+      const existing = await this.listHoldingsByWallet(holdings[0].walletId);
+      const byKey = new Map(
+        existing.map((holding) => [holdingIdentityKey(holding), holding])
+      );
 
-      if (error) {
-        throw new Error(`Failed to upsert wallet holdings: ${error.message}`);
+      const toWrite: UpsertHoldingInput[] = [];
+      const results: NormalizedHolding[] = [];
+
+      for (const input of holdings) {
+        const existingHolding = byKey.get(holdingIdentityKey(input));
+        if (existingHolding && isHoldingUnchanged(existingHolding, input)) {
+          results.push(existingHolding);
+          continue;
+        }
+        toWrite.push(input);
       }
 
-      return Object.freeze((data as WalletHoldingRow[]).map(mapHolding));
+      if (toWrite.length > 0) {
+        const { data, error } = await client
+          .from("wallet_holdings")
+          .upsert(toWrite.map(holdingToRow), {
+            onConflict: "wallet_id,chain_namespace,contract_address,token_id",
+          })
+          .select("*");
+
+        if (error) {
+          throw new Error(`Failed to upsert wallet holdings: ${error.message}`);
+        }
+
+        for (const row of data as WalletHoldingRow[]) {
+          results.push(mapHolding(row));
+        }
+      }
+
+      return Object.freeze(results);
     },
 
     async listHoldingsByWallet(
@@ -182,6 +212,30 @@ export function createSupabaseWalletInventoryRepository(): WalletInventoryReposi
       return count ?? toRemove.length;
     },
 
+    async replaceWalletInventory(
+      input: ReplaceWalletInventoryInput
+    ): Promise<ReplaceWalletInventoryResult> {
+      const client = requireClient();
+      const { data, error } = await client.rpc("replace_wallet_inventory", {
+        p_wallet_id: input.walletId,
+        p_holdings: input.holdings,
+      });
+
+      if (error) {
+        throw new Error(
+          `Failed to replace wallet inventory atomically: ${error.message}`
+        );
+      }
+
+      const payload = data as { writtenCount?: number; removedCount?: number };
+      const holdings = await this.listHoldingsByWallet(input.walletId);
+      return {
+        holdings,
+        writtenCount: payload.writtenCount ?? 0,
+        removedCount: payload.removedCount ?? 0,
+      };
+    },
+
     async startSync(input: StartInventorySyncInput): Promise<WalletInventorySync> {
       const client = requireClient();
       const startedAt = input.syncStartedAt ?? new Date().toISOString();
@@ -193,6 +247,7 @@ export function createSupabaseWalletInventoryRepository(): WalletInventoryReposi
           sync_status: "running",
           sync_started_at: startedAt,
           sync_completed_at: null,
+          duration_ms: null,
           error_message: null,
         })
         .select("*")
@@ -210,11 +265,28 @@ export function createSupabaseWalletInventoryRepository(): WalletInventoryReposi
     ): Promise<WalletInventorySync> {
       const client = requireClient();
       const completedAt = input.syncCompletedAt ?? new Date().toISOString();
+
+      const { data: existing, error: loadError } = await client
+        .from("wallet_inventory_syncs")
+        .select("sync_started_at")
+        .eq("id", input.syncId)
+        .single();
+
+      if (loadError) {
+        throw new Error(`Failed to load inventory sync: ${loadError.message}`);
+      }
+
+      const durationMs = computeSyncDurationMs(
+        (existing as { sync_started_at: string }).sync_started_at,
+        completedAt
+      );
+
       const { data, error } = await client
         .from("wallet_inventory_syncs")
         .update({
           sync_status: input.syncStatus,
           sync_completed_at: completedAt,
+          duration_ms: durationMs,
           error_message: input.errorMessage ?? null,
           updated_at: completedAt,
         })
@@ -253,13 +325,37 @@ export function createSupabaseWalletInventoryRepository(): WalletInventoryReposi
     ): Promise<WalletInventorySync> {
       const client = requireClient();
       const timestamp = new Date().toISOString();
+
+      const { data: existing, error: loadError } = await client
+        .from("wallet_inventory_syncs")
+        .select("sync_started_at, sync_completed_at")
+        .eq("id", syncId)
+        .single();
+
+      if (loadError) {
+        throw new Error(`Failed to load inventory sync: ${loadError.message}`);
+      }
+
+      const row = existing as {
+        sync_started_at: string;
+        sync_completed_at: string | null;
+      };
+      const completedAt =
+        syncStatus === "success" || syncStatus === "failure"
+          ? row.sync_completed_at ?? timestamp
+          : row.sync_completed_at;
+
       const patch: Record<string, unknown> = {
         sync_status: syncStatus,
         error_message: errorMessage ?? null,
         updated_at: timestamp,
       };
-      if (syncStatus === "success" || syncStatus === "failure") {
-        patch.sync_completed_at = timestamp;
+      if (completedAt != null) {
+        patch.sync_completed_at = completedAt;
+        patch.duration_ms = computeSyncDurationMs(
+          row.sync_started_at,
+          completedAt
+        );
       }
 
       const { data, error } = await client

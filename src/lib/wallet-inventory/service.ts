@@ -10,7 +10,6 @@ import {
   WalletNotVerifiedError,
   WalletPendingError,
   WalletRevokedError,
-  holdingIdentityKey,
   type NormalizedHolding,
   type WalletInventorySync,
 } from "@/lib/wallet-inventory/domain";
@@ -28,13 +27,22 @@ export interface SyncWalletInventoryResult {
   sync: WalletInventorySync;
   holdings: readonly NormalizedHolding[];
   removedCount: number;
+  writtenCount: number;
 }
 
 export interface WalletInventoryService {
   /**
-   * Synchronously ingests holdings for a verified wallet, normalizes provider
-   * responses, upserts holdings, removes stale rows, and records sync status.
-   * Does not calculate collector metrics or scores.
+   * Synchronously ingests holdings for a verified wallet.
+   *
+   * Sequence:
+   * 1. begin sync
+   * 2. fetch complete provider inventory (throw on partial failure)
+   * 3. normalize
+   * 4. atomically replace inventory (upsert changed + remove stale)
+   * 5. mark sync completed
+   *
+   * On any failure after begin: mark Failed, do not remove holdings,
+   * preserve previous successful inventory.
    */
   syncVerifiedWalletInventory(
     request: SyncWalletInventoryRequest
@@ -110,8 +118,8 @@ export function createWalletInventoryService(
         throw new InventoryProviderMissingError(wallet.chainNamespace);
       }
 
-      const now = request.now ?? new Date();
-      const startedAt = now.toISOString();
+      const startedAtDate = request.now ?? new Date();
+      const startedAt = startedAtDate.toISOString();
       const sync = await options.inventory.startSync({
         walletId: wallet.id,
         provider: provider.providerKey,
@@ -119,6 +127,7 @@ export function createWalletInventoryService(
       });
 
       try {
+        // Fetch must complete fully or throw. Never cleanup on incomplete fetch.
         const fetchResult = await provider.fetchHoldings({
           chainNamespace: wallet.chainNamespace,
           ownerAddress: wallet.address,
@@ -131,27 +140,26 @@ export function createWalletInventoryService(
           lastSeenAt,
         });
 
-        const upserted = await options.inventory.upsertHoldings(normalized);
-        const keepKeys = new Set(
-          normalized.map((holding) => holdingIdentityKey(holding))
-        );
-        const removedCount = await options.inventory.removeHoldingsNotIn(
-          wallet.id,
-          keepKeys
-        );
+        // Atomic snapshot apply: no partial inventory replacement.
+        const replaced = await options.inventory.replaceWalletInventory({
+          walletId: wallet.id,
+          holdings: normalized,
+        });
 
+        const completedAt = (request.now ?? new Date()).toISOString();
         const completed = await options.inventory.completeSync({
           syncId: sync.id,
           syncStatus: "success",
-          syncCompletedAt: (request.now ?? new Date()).toISOString(),
+          syncCompletedAt: completedAt,
           errorMessage: null,
         });
 
         return {
           wallet,
           sync: completed,
-          holdings: upserted,
-          removedCount,
+          holdings: replaced.holdings,
+          removedCount: replaced.removedCount,
+          writtenCount: replaced.writtenCount,
         };
       } catch (error) {
         const message =
@@ -159,6 +167,7 @@ export function createWalletInventoryService(
             ? error.message
             : "Wallet inventory synchronization failed.";
 
+        // Stale cleanup is never reached on this path; previous inventory stands.
         await options.inventory.completeSync({
           syncId: sync.id,
           syncStatus: "failure",

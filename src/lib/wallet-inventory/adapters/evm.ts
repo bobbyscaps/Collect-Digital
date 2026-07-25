@@ -1,3 +1,4 @@
+import type { AssetStandard } from "@/lib/wallet-inventory/domain";
 import type {
   FetchWalletInventoryRequest,
   FetchWalletInventoryResult,
@@ -21,6 +22,13 @@ export interface EvmProviderNftHolding {
   acquiredAt?: { blockTimestamp?: string } | string;
 }
 
+function mapEvmAssetStandard(tokenType: string): AssetStandard {
+  const normalized = tokenType.trim().toUpperCase();
+  if (normalized === "ERC1155") return "erc1155";
+  if (normalized === "ERC721") return "erc721";
+  return "unknown";
+}
+
 export function normalizeEvmProviderHolding(
   raw: EvmProviderNftHolding
 ): ProviderInventoryItem | null {
@@ -34,16 +42,6 @@ export function normalizeEvmProviderHolding(
     return null;
   }
 
-  const tokenType = (raw.tokenType ?? raw.contract?.tokenType ?? "")
-    .trim()
-    .toUpperCase();
-  const assetStandard =
-    tokenType === "ERC1155"
-      ? "erc1155"
-      : tokenType === "ERC721"
-        ? "erc721"
-        : "unknown";
-
   const acquiredAt =
     typeof raw.acquiredAt === "string"
       ? raw.acquiredAt
@@ -52,9 +50,12 @@ export function normalizeEvmProviderHolding(
   return {
     contractAddress,
     tokenId,
-    assetStandard,
+    assetStandard: mapEvmAssetStandard(
+      raw.tokenType ?? raw.contract?.tokenType ?? ""
+    ),
     quantity: String(raw.balance ?? "1"),
-    collectionId: raw.collection?.id ?? raw.collection?.slug ?? null,
+    // Provider collection IDs/slugs are intentionally dropped.
+    collectionId: null,
     acquiredAt,
   };
 }
@@ -75,6 +76,8 @@ export interface CreateEvmInventoryProviderOptions {
   /**
    * Fetch function returning EVM-shaped raw holdings for an owner address.
    * Defaults to an empty list (foundation stub — no live upstream calls).
+   * Must return the complete page set or throw; partial failures must throw
+   * so stale cleanup never runs on incomplete inventory.
    */
   fetchRawHoldings?: (
     ownerAddress: string

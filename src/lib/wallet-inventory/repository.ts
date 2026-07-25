@@ -6,6 +6,7 @@ import type {
   WalletInventorySyncStatus,
 } from "@/lib/wallet-inventory/domain";
 import {
+  computeSyncDurationMs,
   holdingIdentityKey,
   isHoldingUnchanged,
 } from "@/lib/wallet-inventory/domain";
@@ -28,6 +29,17 @@ export interface CompleteInventorySyncInput {
   errorMessage?: string | null;
 }
 
+export interface ReplaceWalletInventoryInput {
+  walletId: string;
+  holdings: readonly UpsertHoldingInput[];
+}
+
+export interface ReplaceWalletInventoryResult {
+  holdings: readonly NormalizedHolding[];
+  removedCount: number;
+  writtenCount: number;
+}
+
 export interface WalletInventoryRepository {
   upsertHoldings(
     holdings: readonly UpsertHoldingInput[]
@@ -36,11 +48,20 @@ export interface WalletInventoryRepository {
   /**
    * Removes holdings for a wallet whose identity keys are not in keepKeys.
    * keepKeys use holdingIdentityKey(...) format.
+   * Callers must only invoke this after a complete successful provider fetch.
    */
   removeHoldingsNotIn(
     walletId: string,
     keepKeys: ReadonlySet<string>
   ): Promise<number>;
+  /**
+   * Atomically applies a full inventory snapshot for one wallet:
+   * upsert changed rows, skip unchanged (no timestamp churn), remove stale.
+   * On failure, previous holdings remain intact.
+   */
+  replaceWalletInventory(
+    input: ReplaceWalletInventoryInput
+  ): Promise<ReplaceWalletInventoryResult>;
   startSync(input: StartInventorySyncInput): Promise<WalletInventorySync>;
   completeSync(input: CompleteInventorySyncInput): Promise<WalletInventorySync>;
   findLatestSync(walletId: string): Promise<WalletInventorySync | null>;
@@ -84,6 +105,44 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
     }
   }
 
+  function listWalletIdentities(walletId: string): string[] {
+    return Array.from(holdingsByWallet.get(walletId) ?? []);
+  }
+
+  function buildNextHolding(
+    input: UpsertHoldingInput,
+    existing: NormalizedHolding | undefined,
+    timestamp: string
+  ): { holding: NormalizedHolding; written: boolean } {
+    if (existing && isHoldingUnchanged(existing, input)) {
+      // Idempotent: preserve every field including timestamps.
+      return { holding: existing, written: false };
+    }
+
+    if (existing) {
+      return {
+        holding: {
+          ...existing,
+          ...input,
+          id: existing.id,
+          createdAt: existing.createdAt,
+          updatedAt: timestamp,
+        },
+        written: true,
+      };
+    }
+
+    return {
+      holding: {
+        ...input,
+        id: randomUUID(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      written: true,
+    };
+  }
+
   return {
     async upsertHoldings(
       inputs: readonly UpsertHoldingInput[]
@@ -94,41 +153,12 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
       for (const input of inputs) {
         const identity = holdingIdentityKey(input);
         const existing = holdings.get(identity);
-
-        if (existing && isHoldingUnchanged(existing, input)) {
-          // Touch lastSeenAt only — avoid duplicating unchanged holdings.
-          if (existing.lastSeenAt !== input.lastSeenAt) {
-            const touched: NormalizedHolding = {
-              ...existing,
-              lastSeenAt: input.lastSeenAt,
-              updatedAt: timestamp,
-            };
-            holdings.set(identity, touched);
-            results.push(freezeHolding(touched));
-          } else {
-            results.push(freezeHolding(existing));
-          }
-          continue;
+        const { holding, written } = buildNextHolding(input, existing, timestamp);
+        if (written) {
+          holdings.set(identity, holding);
+          trackWalletHolding(input.walletId, identity);
         }
-
-        const next: NormalizedHolding = existing
-          ? {
-              ...existing,
-              ...input,
-              id: existing.id,
-              createdAt: existing.createdAt,
-              updatedAt: timestamp,
-            }
-          : {
-              ...input,
-              id: randomUUID(),
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            };
-
-        holdings.set(identity, next);
-        trackWalletHolding(input.walletId, identity);
-        results.push(freezeHolding(next));
+        results.push(freezeHolding(holding));
       }
 
       return Object.freeze(results);
@@ -157,17 +187,97 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
       walletId: string,
       keepKeys: ReadonlySet<string>
     ): Promise<number> {
-      const identities = holdingsByWallet.get(walletId);
-      if (!identities) return 0;
-
+      const identities = listWalletIdentities(walletId);
       let removed = 0;
-      for (const identity of Array.from(identities)) {
+      for (const identity of identities) {
         if (keepKeys.has(identity)) continue;
         holdings.delete(identity);
         untrackWalletHolding(walletId, identity);
         removed += 1;
       }
       return removed;
+    },
+
+    async replaceWalletInventory(
+      input: ReplaceWalletInventoryInput
+    ): Promise<ReplaceWalletInventoryResult> {
+      const timestamp = nowIso();
+      const previousIdentities = listWalletIdentities(input.walletId);
+      const previousSnapshot = new Map<string, NormalizedHolding>();
+      for (const identity of previousIdentities) {
+        const holding = holdings.get(identity);
+        if (holding) {
+          previousSnapshot.set(identity, { ...holding });
+        }
+      }
+
+      try {
+        const keepKeys = new Set<string>();
+        const nextByIdentity = new Map<string, NormalizedHolding>();
+        let writtenCount = 0;
+
+        for (const holdingInput of input.holdings) {
+          if (holdingInput.walletId !== input.walletId) {
+            throw new Error(
+              `Holding walletId ${holdingInput.walletId} does not match replace target ${input.walletId}`
+            );
+          }
+          const identity = holdingIdentityKey(holdingInput);
+          keepKeys.add(identity);
+          const existing = previousSnapshot.get(identity);
+          const { holding, written } = buildNextHolding(
+            holdingInput,
+            existing,
+            timestamp
+          );
+          if (written) writtenCount += 1;
+          nextByIdentity.set(identity, holding);
+        }
+
+        let removedCount = 0;
+        for (const identity of previousIdentities) {
+          if (!keepKeys.has(identity)) {
+            removedCount += 1;
+          }
+        }
+
+        // Commit as one swap: clear previous wallet entries, then write next.
+        for (const identity of previousIdentities) {
+          holdings.delete(identity);
+          untrackWalletHolding(input.walletId, identity);
+        }
+        for (const [identity, holding] of nextByIdentity) {
+          holdings.set(identity, holding);
+          trackWalletHolding(input.walletId, identity);
+        }
+
+        const resultHoldings = Object.freeze(
+          Array.from(nextByIdentity.values())
+            .sort((a, b) => {
+              const byContract = a.contractAddress.localeCompare(b.contractAddress);
+              if (byContract !== 0) return byContract;
+              return a.tokenId.localeCompare(b.tokenId);
+            })
+            .map(freezeHolding)
+        );
+
+        return {
+          holdings: resultHoldings,
+          removedCount,
+          writtenCount,
+        };
+      } catch (error) {
+        // Roll back to previous successful inventory.
+        for (const identity of listWalletIdentities(input.walletId)) {
+          holdings.delete(identity);
+          untrackWalletHolding(input.walletId, identity);
+        }
+        for (const [identity, holding] of previousSnapshot) {
+          holdings.set(identity, holding);
+          trackWalletHolding(input.walletId, identity);
+        }
+        throw error;
+      }
     },
 
     async startSync(input: StartInventorySyncInput): Promise<WalletInventorySync> {
@@ -179,6 +289,7 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
         syncStatus: "running",
         syncStartedAt: timestamp,
         syncCompletedAt: null,
+        durationMs: null,
         errorMessage: null,
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -200,6 +311,7 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
         ...existing,
         syncStatus: input.syncStatus,
         syncCompletedAt: completedAt,
+        durationMs: computeSyncDurationMs(existing.syncStartedAt, completedAt),
         errorMessage: input.errorMessage ?? null,
         updatedAt: completedAt,
       };
@@ -225,14 +337,19 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
         throw new Error(`Inventory sync not found: ${syncId}`);
       }
       const timestamp = nowIso();
+      const completedAt =
+        syncStatus === "success" || syncStatus === "failure"
+          ? existing.syncCompletedAt ?? timestamp
+          : existing.syncCompletedAt;
       const updated: WalletInventorySync = {
         ...existing,
         syncStatus,
         errorMessage: errorMessage ?? null,
-        syncCompletedAt:
-          syncStatus === "success" || syncStatus === "failure"
-            ? existing.syncCompletedAt ?? timestamp
-            : existing.syncCompletedAt,
+        syncCompletedAt: completedAt,
+        durationMs:
+          completedAt != null
+            ? computeSyncDurationMs(existing.syncStartedAt, completedAt)
+            : null,
         updatedAt: timestamp,
       };
       syncs.set(syncId, updated);

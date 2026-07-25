@@ -1,3 +1,4 @@
+import { coerceAssetStandard, type AssetStandard } from "@/lib/wallet-inventory/domain";
 import type {
   FetchWalletInventoryRequest,
   FetchWalletInventoryResult,
@@ -17,6 +18,31 @@ export interface SolanaProviderNftHolding {
   collection?: { key?: string; address?: string } | string;
   acquiredAt?: string | null;
   interface?: string;
+  tokenStandard?: string;
+}
+
+function mapSolanaAssetStandard(raw: SolanaProviderNftHolding): AssetStandard {
+  const hint = `${raw.interface ?? ""} ${raw.tokenStandard ?? ""}`.toLowerCase();
+  if (
+    hint.includes("programmable") ||
+    hint.includes("pnft") ||
+    hint.includes("v1_pnft")
+  ) {
+    return "solana_pnft";
+  }
+  if (
+    hint.includes("nonfungible") ||
+    hint.includes("metaplex") ||
+    hint.includes("nft") ||
+    hint.includes("standard")
+  ) {
+    return "solana_nft";
+  }
+  if (!raw.interface && !raw.tokenStandard) {
+    // Default mint holdings without a hint are treated as standard Solana NFTs.
+    return "solana_nft";
+  }
+  return coerceAssetStandard(raw.tokenStandard ?? raw.interface);
 }
 
 export function normalizeSolanaProviderHolding(
@@ -27,25 +53,15 @@ export function normalizeSolanaProviderHolding(
     return null;
   }
 
-  let collectionId: string | null = null;
-  if (typeof raw.collection === "string") {
-    collectionId = raw.collection.trim() || null;
-  } else if (raw.collection) {
-    collectionId =
-      raw.collection.key?.trim() ||
-      raw.collection.address?.trim() ||
-      null;
-  }
-
   return {
     // Solana NFTs are mint-address keyed; contractAddress stores the mint.
     contractAddress: mint,
-    // Fungible/compressed variants may share a mint; tokenId mirrors mint
-    // for 1/1 NFTs so the unique key remains stable.
+    // 1/1 NFTs use mint as tokenId so the unique key remains stable.
     tokenId: mint,
-    assetStandard: "spl_nft",
+    assetStandard: mapSolanaAssetStandard(raw),
     quantity: String(raw.amount ?? "1"),
-    collectionId,
+    // Provider collection keys/addresses are intentionally dropped.
+    collectionId: null,
     acquiredAt: raw.acquiredAt ?? null,
   };
 }
@@ -63,6 +79,10 @@ export function normalizeSolanaProviderHoldings(
 
 export interface CreateSolanaInventoryProviderOptions {
   providerKey?: string;
+  /**
+   * Must return the complete inventory or throw. Partial upstream failures
+   * must throw so callers never run stale cleanup on incomplete data.
+   */
   fetchRawHoldings?: (
     ownerAddress: string
   ) => Promise<readonly SolanaProviderNftHolding[]>;

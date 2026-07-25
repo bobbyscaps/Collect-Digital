@@ -1,8 +1,9 @@
-import type { ProfileWallet } from "@/lib/profile-wallets/domain";
+import type { ProfileWallet, WalletChainNamespace } from "@/lib/profile-wallets/domain";
 import { normalizeWalletAddress } from "@/lib/profile-wallets/normalization";
-import type {
-  AssetStandard,
-  NormalizedHolding,
+import {
+  coerceAssetStandard,
+  stableCollectionId,
+  type NormalizedHolding,
 } from "@/lib/wallet-inventory/domain";
 import type { ProviderInventoryItem } from "@/lib/wallet-inventory/providers";
 
@@ -12,8 +13,18 @@ export interface NormalizeHoldingContext {
   lastSeenAt: string;
 }
 
-function normalizeContractAddress(
-  chainNamespace: ProfileWallet["chainNamespace"],
+/**
+ * EVM: lowercase. Solana: trim only (base58 is case-sensitive / already canonical).
+ */
+export function normalizeInventoryAddress(
+  chainNamespace: WalletChainNamespace,
+  address: string
+): string {
+  return normalizeWalletAddress(chainNamespace, address);
+}
+
+export function normalizeContractAddress(
+  chainNamespace: WalletChainNamespace,
   contractAddress: string
 ): string {
   const cleaned = contractAddress.trim();
@@ -23,6 +34,7 @@ function normalizeContractAddress(
   if (chainNamespace === "eip155") {
     return cleaned.toLowerCase();
   }
+  // Solana mint/program addresses: preserve canonical base58 casing.
   return cleaned;
 }
 
@@ -39,49 +51,41 @@ function normalizeQuantity(quantity: string): string {
   if (!cleaned) {
     return "1";
   }
-  // Reject non-positive / non-numeric quantities early.
   if (!/^\d+(\.\d+)?$/.test(cleaned) || Number(cleaned) <= 0) {
     throw new Error(`Invalid holding quantity: ${quantity}`);
   }
   return cleaned;
 }
 
-function normalizeAssetStandard(value: AssetStandard): AssetStandard {
-  if (
-    value === "erc721" ||
-    value === "erc1155" ||
-    value === "spl_nft" ||
-    value === "unknown"
-  ) {
-    return value;
-  }
-  return "unknown";
-}
-
 /**
  * Maps a provider-independent inventory item into the internal holding model.
- * Does not enrich metadata, rarity, floor, or valuation.
+ * Provider collection IDs are ignored; collectionId is derived from
+ * (chainNamespace + contractAddress) only.
  */
 export function normalizeProviderHolding(
   item: ProviderInventoryItem,
   context: NormalizeHoldingContext
 ): Omit<NormalizedHolding, "id" | "createdAt" | "updatedAt"> {
-  const ownerAddress = normalizeWalletAddress(
+  const ownerAddress = normalizeInventoryAddress(
     context.wallet.chainNamespace,
     context.wallet.address
+  );
+  const contractAddress = normalizeContractAddress(
+    context.wallet.chainNamespace,
+    item.contractAddress
   );
 
   return {
     walletId: context.wallet.id,
     chainNamespace: context.wallet.chainNamespace,
-    contractAddress: normalizeContractAddress(
-      context.wallet.chainNamespace,
-      item.contractAddress
-    ),
+    contractAddress,
     tokenId: normalizeTokenId(item.tokenId),
-    assetStandard: normalizeAssetStandard(item.assetStandard),
+    assetStandard: coerceAssetStandard(item.assetStandard),
     quantity: normalizeQuantity(item.quantity),
-    collectionId: item.collectionId?.trim() ? item.collectionId.trim() : null,
+    collectionId: stableCollectionId(
+      context.wallet.chainNamespace,
+      contractAddress
+    ),
     ownerAddress,
     acquiredAt: item.acquiredAt ?? null,
     lastSeenAt: context.lastSeenAt,

@@ -1,14 +1,19 @@
 import type { WalletChainNamespace } from "@/lib/profile-wallets/domain";
 
 /**
- * Minimal asset standards required for future collector analysis.
- * No rarity, floor, valuation, or metadata enrichment lives here.
+ * Known NFT/asset standards for EVM and Solana.
+ * Unknown provider values persist as "unknown" (never rejected).
+ * Stored as free-form text in Postgres so future chains need no schema change.
  */
-export type AssetStandard =
-  | "erc721"
-  | "erc1155"
-  | "spl_nft"
-  | "unknown";
+export const KNOWN_ASSET_STANDARDS = [
+  "erc721",
+  "erc1155",
+  "solana_nft",
+  "solana_pnft",
+  "unknown",
+] as const;
+
+export type AssetStandard = (typeof KNOWN_ASSET_STANDARDS)[number];
 
 export type WalletInventorySyncStatus =
   | "idle"
@@ -28,6 +33,10 @@ export interface NormalizedHolding {
   tokenId: string;
   assetStandard: AssetStandard;
   quantity: string;
+  /**
+   * Stable collection identity: `${chainNamespace}:${contractAddress}`.
+   * Never a provider-specific collection slug/id.
+   */
   collectionId: string | null;
   ownerAddress: string;
   acquiredAt: string | null;
@@ -44,6 +53,8 @@ export interface WalletInventorySync {
   syncStatus: WalletInventorySyncStatus;
   syncStartedAt: string;
   syncCompletedAt: string | null;
+  /** Elapsed sync duration in milliseconds; null while running. */
+  durationMs: number | null;
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
@@ -131,6 +142,39 @@ export class InventorySyncFailedError extends WalletInventoryError {
   }
 }
 
+export function isKnownAssetStandard(value: string): value is AssetStandard {
+  return (KNOWN_ASSET_STANDARDS as readonly string[]).includes(value);
+}
+
+export function coerceAssetStandard(value: string | null | undefined): AssetStandard {
+  if (!value) return "unknown";
+  const normalized = value.trim().toLowerCase();
+  if (isKnownAssetStandard(normalized)) return normalized;
+  // Accept common aliases from providers without rejecting.
+  if (normalized === "spl_nft" || normalized === "metaplex" || normalized === "nft") {
+    return "solana_nft";
+  }
+  if (
+    normalized === "programmable_nft" ||
+    normalized === "pnft" ||
+    normalized === "v1_pnft"
+  ) {
+    return "solana_pnft";
+  }
+  return "unknown";
+}
+
+/**
+ * Stable collection identity independent of provider catalog IDs.
+ * Enrichment of collection metadata belongs in a future PR.
+ */
+export function stableCollectionId(
+  chainNamespace: WalletChainNamespace,
+  contractAddress: string
+): string {
+  return `${chainNamespace}:${contractAddress}`;
+}
+
 export function holdingIdentityKey(
   holding: Pick<
     NormalizedHolding,
@@ -146,8 +190,9 @@ export function holdingIdentityKey(
 }
 
 /**
- * Returns true when persisted holding fields that matter for inventory
- * equality are unchanged (ignores id/timestamps for comparison callers).
+ * Content equality for idempotent sync. Ignores id and all timestamps
+ * (createdAt/updatedAt/lastSeenAt) so identical provider payloads cause
+ * zero writes / zero timestamp churn.
  */
 export function isHoldingUnchanged(
   existing: NormalizedHolding,
@@ -165,4 +210,14 @@ export function isHoldingUnchanged(
     existing.acquiredAt === next.acquiredAt &&
     existing.sourceProvider === next.sourceProvider
   );
+}
+
+export function computeSyncDurationMs(
+  syncStartedAt: string,
+  syncCompletedAt: string
+): number {
+  const started = Date.parse(syncStartedAt);
+  const completed = Date.parse(syncCompletedAt);
+  if (Number.isNaN(started) || Number.isNaN(completed)) return 0;
+  return Math.max(0, completed - started);
 }
