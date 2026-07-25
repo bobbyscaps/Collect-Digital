@@ -361,6 +361,28 @@ export function createSupabaseWalletInventoryRepository(): WalletInventoryReposi
       return data ? mapSync(data as WalletInventorySyncRow) : null;
     },
 
+    async findLatestSuccessfulSync(
+      walletId: string
+    ): Promise<WalletInventorySync | null> {
+      const client = requireClient();
+      const { data, error } = await client
+        .from("wallet_inventory_syncs")
+        .select("*")
+        .eq("wallet_id", walletId)
+        .eq("sync_status", "success")
+        .order("sync_completed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(
+          `Failed to load latest successful inventory sync: ${error.message}`
+        );
+      }
+
+      return data ? mapSync(data as WalletInventorySyncRow) : null;
+    },
+
     async updateSyncStatus(
       syncId: string,
       syncStatus: WalletInventorySyncStatus,

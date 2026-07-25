@@ -57,8 +57,15 @@ Supported known values:
 
 ## Collection identity
 
-`collectionId` is derived as `${chainNamespace}:${contractAddress}` only.
-Provider catalog IDs/slugs are never persisted. Collection enrichment is future work.
+`collectionId` is `${chainNamespace}:${collectionAddress}`:
+
+- **EVM:** `collectionAddress` is the NFT contract. Marketplace/catalog IDs are
+  ignored even if an adapter mistakenly supplies them.
+- **Solana:** when the adapter supplies a Metaplex verified collection
+  key/address, that becomes `collectionAddress`. Otherwise the individual mint
+  is used (per-mint singleton). Marketplace catalog IDs/slugs are never used.
+
+Collection metadata enrichment is future work.
 
 ## Sync metadata
 

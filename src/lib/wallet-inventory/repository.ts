@@ -79,6 +79,13 @@ export interface WalletInventoryRepository {
   startSync(input: StartInventorySyncInput): Promise<WalletInventorySync>;
   completeSync(input: CompleteInventorySyncInput): Promise<WalletInventorySync>;
   findLatestSync(walletId: string): Promise<WalletInventorySync | null>;
+  /**
+   * Read-only: latest sync with syncStatus === "success" for a wallet.
+   * Failed/running/idle syncs are ignored so freshness reflects completed work.
+   */
+  findLatestSuccessfulSync(
+    walletId: string
+  ): Promise<WalletInventorySync | null>;
   updateSyncStatus(
     syncId: string,
     syncStatus: WalletInventorySyncStatus,
@@ -102,7 +109,16 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
   const holdings = new Map<string, NormalizedHolding>();
   const holdingsByWallet = new Map<string, Set<string>>();
   const syncs = new Map<string, WalletInventorySync>();
+  const syncIdsByWallet = new Map<string, string[]>();
   const latestSyncByWallet = new Map<string, string>();
+
+  function trackWalletSync(walletId: string, syncId: string) {
+    const list = syncIdsByWallet.get(walletId) ?? [];
+    if (!list.includes(syncId)) {
+      list.push(syncId);
+      syncIdsByWallet.set(walletId, list);
+    }
+  }
 
   function trackWalletHolding(walletId: string, identity: string) {
     const set = holdingsByWallet.get(walletId) ?? new Set<string>();
@@ -359,6 +375,7 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
         updatedAt: timestamp,
       };
       syncs.set(sync.id, sync);
+      trackWalletSync(input.walletId, sync.id);
       latestSyncByWallet.set(input.walletId, sync.id);
       return freezeSync(sync);
     },
@@ -380,6 +397,7 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
         updatedAt: completedAt,
       };
       syncs.set(updated.id, updated);
+      trackWalletSync(updated.walletId, updated.id);
       latestSyncByWallet.set(updated.walletId, updated.id);
       return freezeSync(updated);
     },
@@ -389,6 +407,28 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
       if (!id) return null;
       const sync = syncs.get(id);
       return sync ? freezeSync(sync) : null;
+    },
+
+    async findLatestSuccessfulSync(
+      walletId: string
+    ): Promise<WalletInventorySync | null> {
+      const ids = syncIdsByWallet.get(walletId) ?? [];
+      let latest: WalletInventorySync | null = null;
+      let latestMs = Number.NEGATIVE_INFINITY;
+
+      for (const id of ids) {
+        const sync = syncs.get(id);
+        if (!sync || sync.syncStatus !== "success") continue;
+        const stamp = sync.syncCompletedAt ?? sync.syncStartedAt;
+        const ms = Date.parse(stamp);
+        if (Number.isNaN(ms)) continue;
+        if (ms > latestMs) {
+          latestMs = ms;
+          latest = sync;
+        }
+      }
+
+      return latest ? freezeSync(latest) : null;
     },
 
     async updateSyncStatus(

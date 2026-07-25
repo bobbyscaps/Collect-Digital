@@ -11,6 +11,12 @@ export interface ProviderInventoryItem {
   tokenId: string;
   assetStandard: AssetStandard;
   quantity: string;
+  /**
+   * Optional on-chain collection address used for Solana grouping.
+   * - EVM adapters must leave this null (contractAddress is the collection).
+   * - Solana adapters may set the Metaplex verified collection key/address.
+   * Never a marketplace slug or provider catalog id.
+   */
   collectionId: string | null;
   acquiredAt: string | null;
 }

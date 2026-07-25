@@ -34,8 +34,11 @@ export interface NormalizedHolding {
   assetStandard: AssetStandard;
   quantity: string;
   /**
-   * Stable collection identity: `${chainNamespace}:${contractAddress}`.
-   * Never a provider-specific collection slug/id.
+   * Stable collection identity: `${chainNamespace}:${collectionAddress}`.
+   * - EVM: collectionAddress is the NFT contract.
+   * - Solana: Metaplex verified collection address when known; otherwise the
+   *   individual mint (per-mint singleton until a verified collection exists).
+   * Never a marketplace slug or provider catalog id.
    */
   collectionId: string | null;
   ownerAddress: string;
@@ -165,14 +168,16 @@ export function coerceAssetStandard(value: string | null | undefined): AssetStan
 }
 
 /**
- * Stable collection identity independent of provider catalog IDs.
+ * Stable collection identity independent of marketplace catalog IDs.
+ * `collectionAddress` is the EVM contract or Solana verified collection /
+ * mint address used for grouping (see normalize resolveCollectionAddress).
  * Enrichment of collection metadata belongs in a future PR.
  */
 export function stableCollectionId(
   chainNamespace: WalletChainNamespace,
-  contractAddress: string
+  collectionAddress: string
 ): string {
-  return `${chainNamespace}:${contractAddress}`;
+  return `${chainNamespace}:${collectionAddress}`;
 }
 
 export function holdingIdentityKey(

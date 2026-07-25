@@ -3,21 +3,27 @@ import type { WalletChainNamespace } from "@/lib/profile-wallets/domain";
 import type { NormalizedHolding } from "@/lib/wallet-inventory/domain";
 import {
   assetIdentityKey,
-  parseQuantityAsNumber,
+  assetSpecificCollectionId,
   sumQuantityStrings,
   type ChainDistribution,
   type CollectionAggregation,
   type CollectionDistributionEntry,
   type CollectorInventorySummary,
   type DuplicateAsset,
+  type WalletInventoryFreshness,
 } from "@/lib/collector-analysis/domain";
+
+const CHAIN_NAMESPACE_ORDER: readonly WalletChainNamespace[] = [
+  "eip155",
+  "solana",
+];
 
 interface CollectionBucket {
   collectionId: string;
   chainNamespace: WalletChainNamespace;
   contractAddress: string;
   holdings: NormalizedHolding[];
-  tokenIds: Set<string>;
+  assetIdentities: Set<string>;
   walletIds: Set<string>;
 }
 
@@ -26,13 +32,24 @@ interface AssetBucket {
   contractAddress: string;
   tokenId: string;
   collectionId: string | null;
-  walletIds: Set<string>;
-  quantities: string[];
+  walletQuantities: Map<string, string[]>;
 }
 
 function parseCollectionId(
   collectionId: string
 ): { chainNamespace: WalletChainNamespace; contractAddress: string } | null {
+  if (collectionId.startsWith("asset:")) {
+    const rest = collectionId.slice("asset:".length);
+    const parts = rest.split(":");
+    if (parts.length < 3) return null;
+    const chainNamespace = parts[0];
+    const tokenId = parts[parts.length - 1];
+    const contractAddress = parts.slice(1, -1).join(":");
+    if (chainNamespace !== "eip155" && chainNamespace !== "solana") return null;
+    if (!contractAddress || !tokenId) return null;
+    return { chainNamespace, contractAddress };
+  }
+
   const separator = collectionId.indexOf(":");
   if (separator <= 0 || separator === collectionId.length - 1) return null;
   const chainNamespace = collectionId.slice(0, separator);
@@ -42,9 +59,22 @@ function parseCollectionId(
 }
 
 /**
+ * Resolves the collection grouping key for a holding.
+ * Missing collectionId uses an asset-specific fallback — never a shared unknown.
+ */
+export function resolveGroupingCollectionId(
+  holding: NormalizedHolding
+): string {
+  if (holding.collectionId && holding.collectionId.trim()) {
+    return holding.collectionId;
+  }
+  return assetSpecificCollectionId(holding);
+}
+
+/**
  * Groups normalized holdings into collection aggregations.
- * Holdings without a collectionId are skipped for collection grouping
- * (they still contribute to summary totals via asset identity).
+ * Holdings without collectionId still group via asset-specific fallbacks and
+ * always contribute to unique token / quantity totals at the summary layer.
  */
 export function aggregateCollections(
   holdings: readonly NormalizedHolding[]
@@ -52,22 +82,22 @@ export function aggregateCollections(
   const buckets = new Map<string, CollectionBucket>();
 
   for (const holding of holdings) {
-    if (!holding.collectionId) continue;
-    let bucket = buckets.get(holding.collectionId);
+    const collectionId = resolveGroupingCollectionId(holding);
+    let bucket = buckets.get(collectionId);
     if (!bucket) {
-      const parsed = parseCollectionId(holding.collectionId);
+      const parsed = parseCollectionId(collectionId);
       bucket = {
-        collectionId: holding.collectionId,
+        collectionId,
         chainNamespace: parsed?.chainNamespace ?? holding.chainNamespace,
         contractAddress: parsed?.contractAddress ?? holding.contractAddress,
         holdings: [],
-        tokenIds: new Set(),
+        assetIdentities: new Set(),
         walletIds: new Set(),
       };
-      buckets.set(holding.collectionId, bucket);
+      buckets.set(collectionId, bucket);
     }
     bucket.holdings.push(holding);
-    bucket.tokenIds.add(holding.tokenId);
+    bucket.assetIdentities.add(assetIdentityKey(holding));
     bucket.walletIds.add(holding.walletId);
   }
 
@@ -78,8 +108,8 @@ export function aggregateCollections(
           collectionId: bucket.collectionId,
           chainNamespace: bucket.chainNamespace,
           contractAddress: bucket.contractAddress,
-          totalAssetsOwned: bucket.holdings.length,
-          uniqueTokenCount: bucket.tokenIds.size,
+          ownershipRecordCount: bucket.holdings.length,
+          uniqueTokenCount: bucket.assetIdentities.size,
           totalQuantity: sumQuantityStrings(
             bucket.holdings.map((holding) => holding.quantity)
           ),
@@ -106,13 +136,13 @@ function buildAssetBuckets(
         contractAddress: holding.contractAddress,
         tokenId: holding.tokenId,
         collectionId: holding.collectionId,
-        walletIds: new Set(),
-        quantities: [],
+        walletQuantities: new Map(),
       };
       buckets.set(key, bucket);
     }
-    bucket.walletIds.add(holding.walletId);
-    bucket.quantities.push(holding.quantity);
+    const existing = bucket.walletQuantities.get(holding.walletId) ?? [];
+    existing.push(holding.quantity);
+    bucket.walletQuantities.set(holding.walletId, existing);
     if (bucket.collectionId == null && holding.collectionId != null) {
       bucket.collectionId = holding.collectionId;
     }
@@ -128,7 +158,17 @@ export function buildDuplicateAssets(
   const duplicates: DuplicateAsset[] = [];
 
   for (const bucket of buckets.values()) {
-    if (bucket.walletIds.size < 2) continue;
+    if (bucket.walletQuantities.size < 2) continue;
+    const walletQuantities = Object.freeze(
+      Array.from(bucket.walletQuantities.entries())
+        .map(([walletId, quantities]) =>
+          Object.freeze({
+            walletId,
+            quantity: sumQuantityStrings(quantities),
+          })
+        )
+        .sort((a, b) => a.walletId.localeCompare(b.walletId))
+    );
     duplicates.push(
       Object.freeze({
         chainNamespace: bucket.chainNamespace,
@@ -136,15 +176,20 @@ export function buildDuplicateAssets(
         tokenId: bucket.tokenId,
         collectionId: bucket.collectionId,
         walletIds: Object.freeze(
-          Array.from(bucket.walletIds).sort((a, b) => a.localeCompare(b))
+          walletQuantities.map((entry) => entry.walletId)
         ),
-        totalQuantity: sumQuantityStrings(bucket.quantities),
+        totalQuantity: sumQuantityStrings(
+          walletQuantities.map((entry) => entry.quantity)
+        ),
+        walletQuantities,
       })
     );
   }
 
   return Object.freeze(
     duplicates.sort((a, b) => {
+      const byChain = a.chainNamespace.localeCompare(b.chainNamespace);
+      if (byChain !== 0) return byChain;
       const byContract = a.contractAddress.localeCompare(b.contractAddress);
       if (byContract !== 0) return byContract;
       return a.tokenId.localeCompare(b.tokenId);
@@ -167,8 +212,11 @@ export function buildChainDistribution(
   }
 
   const distribution: Partial<Record<WalletChainNamespace, number>> = {};
-  for (const [namespace, tokens] of uniqueByChain) {
-    distribution[namespace] = tokens.size;
+  for (const namespace of CHAIN_NAMESPACE_ORDER) {
+    const tokens = uniqueByChain.get(namespace);
+    if (tokens) {
+      distribution[namespace] = tokens.size;
+    }
   }
   return Object.freeze(distribution);
 }
@@ -178,13 +226,10 @@ export function buildCollectorSummary(input: {
   holdings: readonly NormalizedHolding[];
   collections: readonly CollectionAggregation[];
   lastInventorySync: string | null;
+  walletFreshness: readonly WalletInventoryFreshness[];
 }): CollectorInventorySummary {
   const assetBuckets = buildAssetBuckets(input.holdings);
-  const totalNFTs = assetBuckets.size;
-  const totalAssets = input.holdings.reduce(
-    (sum, holding) => sum + parseQuantityAsNumber(holding.quantity),
-    0
-  );
+  const allQuantities = input.holdings.map((holding) => holding.quantity);
 
   const collectionDistribution = Object.freeze(
     input.collections
@@ -196,44 +241,49 @@ export function buildCollectorSummary(input: {
           walletCount: collection.walletsContainingCollection.length,
         } satisfies CollectionDistributionEntry)
       )
-      .sort((a, b) => {
-        if (b.uniqueTokenCount !== a.uniqueTokenCount) {
-          return b.uniqueTokenCount - a.uniqueTokenCount;
-        }
-        return a.collectionId.localeCompare(b.collectionId);
-      })
+      .sort((a, b) => a.collectionId.localeCompare(b.collectionId))
   ) as readonly CollectionDistributionEntry[];
+
+  const walletFreshness = Object.freeze(
+    [...input.walletFreshness].sort((a, b) =>
+      a.walletId.localeCompare(b.walletId)
+    )
+  );
 
   return Object.freeze({
     verifiedWalletCount: input.verifiedWallets.length,
     totalCollections: input.collections.length,
-    totalNFTs,
-    totalAssets,
+    uniqueTokenCount: assetBuckets.size,
+    totalQuantity: sumQuantityStrings(allQuantities),
     chainDistribution: buildChainDistribution(input.holdings),
     collectionDistribution,
     duplicateAssets: buildDuplicateAssets(input.holdings),
     lastInventorySync: input.lastInventorySync,
+    walletFreshness,
   });
 }
 
 /**
- * Connected + verified wallets only. Pending, revoked, and disconnected
- * wallets are excluded from collector inventory analysis.
+ * Connected + verified wallets only. Eligibility is evaluated from the
+ * current registry status — persisted holdings alone never imply inclusion.
+ * Pending, revoked, and disconnected wallets are excluded.
  */
 export function selectVerifiedConnectedWallets(
   wallets: readonly ProfileWallet[]
 ): readonly ProfileWallet[] {
   return Object.freeze(
-    wallets.filter(
-      (wallet) =>
-        wallet.verificationStatus === "verified" && wallet.disconnectedAt == null
-    )
+    wallets
+      .filter(
+        (wallet) =>
+          wallet.verificationStatus === "verified" &&
+          wallet.disconnectedAt == null
+      )
+      .sort((a, b) => a.id.localeCompare(b.id))
   );
 }
 
 /**
- * Picks the most recent sync timestamp across wallet sync rows.
- * Prefers syncCompletedAt, falls back to syncStartedAt.
+ * Newest successful sync timestamp among the provided values.
  */
 export function resolveLastInventorySync(
   timestamps: readonly (string | null | undefined)[]
@@ -252,4 +302,20 @@ export function resolveLastInventorySync(
   }
 
   return latest;
+}
+
+export function sortHoldingsDeterministically(
+  holdings: readonly NormalizedHolding[]
+): readonly NormalizedHolding[] {
+  return Object.freeze(
+    [...holdings].sort((a, b) => {
+      const byWallet = a.walletId.localeCompare(b.walletId);
+      if (byWallet !== 0) return byWallet;
+      const byChain = a.chainNamespace.localeCompare(b.chainNamespace);
+      if (byChain !== 0) return byChain;
+      const byContract = a.contractAddress.localeCompare(b.contractAddress);
+      if (byContract !== 0) return byContract;
+      return a.tokenId.localeCompare(b.tokenId);
+    })
+  );
 }

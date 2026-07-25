@@ -5,10 +5,12 @@ import {
   buildCollectorSummary,
   resolveLastInventorySync,
   selectVerifiedConnectedWallets,
+  sortHoldingsDeterministically,
 } from "@/lib/collector-analysis/aggregation";
 import type {
   AnalyzedWalletRef,
   CollectorInventoryAnalysis,
+  WalletInventoryFreshness,
 } from "@/lib/collector-analysis/domain";
 
 export interface AnalyzeCollectorInventoryRequest {
@@ -19,8 +21,13 @@ export interface CollectorAnalysisService {
   /**
    * Analyzes normalized inventory for a collector's verified wallets.
    *
-   * Read-only: never syncs, never writes holdings, never calls providers.
+   * Read-only: never syncs, never writes holdings, never calls providers,
+   * never persists scores or derived summaries.
    * Does not calculate Collection Scores or Collector Scores.
+   *
+   * Eligibility uses the current wallet registry status. Holdings left behind
+   * by a previously synced wallet that is now revoked/disconnected/pending
+   * are not included.
    */
   analyzeCollectorInventory(
     request: AnalyzeCollectorInventoryRequest
@@ -62,24 +69,35 @@ export function createCollectorAnalysisService(
       const holdings =
         walletIds.length === 0
           ? Object.freeze([])
-          : await options.inventory.listHoldingsByWallets(walletIds);
+          : sortHoldingsDeterministically(
+              await options.inventory.listHoldingsByWallets(walletIds)
+            );
 
       const collections = aggregateCollections(holdings);
 
-      const syncTimestamps = await Promise.all(
+      const walletFreshness: WalletInventoryFreshness[] = await Promise.all(
         walletIds.map(async (walletId) => {
-          const sync = await options.inventory.findLatestSync(walletId);
-          if (!sync) return null;
-          return sync.syncCompletedAt ?? sync.syncStartedAt;
+          const sync =
+            await options.inventory.findLatestSuccessfulSync(walletId);
+          return Object.freeze({
+            walletId,
+            lastSuccessfulSyncAt: sync
+              ? (sync.syncCompletedAt ?? sync.syncStartedAt)
+              : null,
+          });
         })
       );
-      const lastInventorySync = resolveLastInventorySync(syncTimestamps);
+
+      const lastInventorySync = resolveLastInventorySync(
+        walletFreshness.map((entry) => entry.lastSuccessfulSyncAt)
+      );
 
       const summary = buildCollectorSummary({
         verifiedWallets,
         holdings,
         collections,
         lastInventorySync,
+        walletFreshness,
       });
 
       return Object.freeze({
@@ -87,7 +105,7 @@ export function createCollectorAnalysisService(
         verifiedWallets: Object.freeze(verifiedWallets.map(toWalletRef)),
         summary,
         collections,
-        holdings: Object.freeze([...holdings]),
+        holdings,
       });
     },
   };

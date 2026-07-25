@@ -11,19 +11,33 @@ import type { NormalizedHolding } from "@/lib/wallet-inventory/domain";
 
 /**
  * Aggregated view of one collection across a collector's verified wallets.
- * Grouped by stable `collectionId` (`${chainNamespace}:${contractAddress}`).
+ *
+ * Grouping key is the holding's stable `collectionId`, or an asset-specific
+ * fallback when that value is missing (never a shared "unknown" bucket).
  *
  * Does not include rarity, floor price, or valuation.
  */
 export interface CollectionAggregation {
   collectionId: string;
   chainNamespace: WalletChainNamespace;
+  /**
+   * EVM contract, Solana verified collection address, or mint/contract used
+   * for the grouping key. For asset-specific fallbacks this is the holding's
+   * contract/mint address (not a synthetic shared unknown address).
+   */
   contractAddress: string;
-  /** Number of ownership records (holding rows) for this collection. */
-  totalAssetsOwned: number;
-  /** Distinct token IDs within this collection (deduped across wallets). */
+  /**
+   * Count of included ownership records (holding rows) for this collection.
+   * Same token in two wallets contributes 2. Distinct from uniqueTokenCount
+   * and totalQuantity.
+   */
+  ownershipRecordCount: number;
+  /**
+   * Distinct canonical asset identities within this collection
+   * (`chainNamespace + contractAddress + tokenId`), deduped across wallets.
+   */
   uniqueTokenCount: number;
-  /** Sum of holding quantities (supports ERC1155). Decimal integer string. */
+  /** Summed ownership quantity across included holdings (ERC1155-aware). */
   totalQuantity: string;
   /** Verified wallet IDs that hold at least one asset from this collection. */
   walletsContainingCollection: readonly string[];
@@ -39,13 +53,18 @@ export interface DuplicateAsset {
   tokenId: string;
   collectionId: string | null;
   walletIds: readonly string[];
-  /** Sum of quantities across wallets for this asset identity. */
+  /** Wallet-level quantities preserved as a sum across those wallets. */
   totalQuantity: string;
+  /** Per-wallet quantities for provenance-preserving ERC1155 merges. */
+  walletQuantities: readonly {
+    walletId: string;
+    quantity: string;
+  }[];
 }
 
 /**
- * Per-chain counts for a collector. Values are unique token counts
- * (asset identity deduped across wallets on that chain).
+ * Per-chain unique token counts (canonical asset identity deduped on-chain).
+ * Emitted with deterministic key order: eip155, then solana (when present).
  */
 export type ChainDistribution = Readonly<
   Partial<Record<WalletChainNamespace, number>>
@@ -62,21 +81,45 @@ export interface CollectionDistributionEntry {
 }
 
 /**
+ * Per-wallet inventory freshness for stale-wallet detection.
+ * Only successful syncs contribute timestamps.
+ */
+export interface WalletInventoryFreshness {
+  walletId: string;
+  lastSuccessfulSyncAt: string | null;
+}
+
+/**
  * Internal collector inventory summary.
  * Not a UI model and not a score.
+ *
+ * Count field definitions (do not reinterpret):
+ * - verifiedWalletCount: currently verified + connected wallets included
+ * - totalCollections: unique collection grouping identities
+ * - uniqueTokenCount: unique canonical asset identities across the collector
+ * - totalQuantity: summed ownership quantity (string), including ERC1155
+ *
+ * There is no separate totalNFTs / totalAssets field — those names overlapped
+ * and are intentionally avoided.
  */
 export interface CollectorInventorySummary {
   verifiedWalletCount: number;
   totalCollections: number;
-  /** Distinct assets (chain + contract + tokenId), deduped across wallets. */
-  totalNFTs: number;
-  /** Sum of all holding quantities (ERC1155-aware; multi-wallet quantities add). */
-  totalAssets: number;
+  uniqueTokenCount: number;
+  totalQuantity: string;
   chainDistribution: ChainDistribution;
   collectionDistribution: readonly CollectionDistributionEntry[];
   duplicateAssets: readonly DuplicateAsset[];
-  /** Most recent inventory sync timestamp across verified wallets, if any. */
+  /**
+   * Newest successful inventory sync timestamp across included wallets.
+   * Failed/running syncs never contribute. Null when no wallet has succeeded.
+   */
   lastInventorySync: string | null;
+  /**
+   * Per-wallet successful sync timestamps (same eligibility as analysis).
+   * Lets callers spot a stale verified wallet without background jobs/UI.
+   */
+  walletFreshness: readonly WalletInventoryFreshness[];
 }
 
 /**
@@ -98,14 +141,17 @@ export interface CollectorInventoryAnalysis {
   summary: CollectorInventorySummary;
   collections: readonly CollectionAggregation[];
   /**
-   * Normalized holdings included in the analysis.
+   * Normalized holdings included in the analysis (verified wallets only).
    * Each row retains wallet ownership provenance (`walletId`, `ownerAddress`).
+   * Sorted deterministically; never includes revoked/disconnected/pending wallets.
    */
   holdings: readonly NormalizedHolding[];
 }
 
 /**
- * Cross-wallet asset identity (excludes walletId to detect duplicates).
+ * Canonical cross-wallet asset identity.
+ * Includes chain namespace so identical token IDs on different chains stay distinct.
+ * Excludes walletId so the same asset across wallets can be deduped.
  */
 export function assetIdentityKey(
   holding: Pick<
@@ -121,6 +167,19 @@ export function assetIdentityKey(
 }
 
 /**
+ * Asset-specific collection grouping fallback when `collectionId` is missing.
+ * Never collapses unrelated assets into a shared "unknown" collection.
+ */
+export function assetSpecificCollectionId(
+  holding: Pick<
+    NormalizedHolding,
+    "chainNamespace" | "contractAddress" | "tokenId"
+  >
+): string {
+  return `asset:${assetIdentityKey(holding)}`;
+}
+
+/**
  * Sum non-negative integer quantity strings. Invalid values are ignored.
  */
 export function sumQuantityStrings(quantities: readonly string[]): string {
@@ -131,11 +190,4 @@ export function sumQuantityStrings(quantities: readonly string[]): string {
     total += BigInt(trimmed);
   }
   return total.toString();
-}
-
-export function parseQuantityAsNumber(quantity: string): number {
-  const trimmed = quantity.trim();
-  if (!/^\d+$/.test(trimmed)) return 0;
-  const asNumber = Number(trimmed);
-  return Number.isSafeInteger(asNumber) ? asNumber : Number.MAX_SAFE_INTEGER;
 }
