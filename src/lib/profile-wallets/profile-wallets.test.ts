@@ -61,11 +61,28 @@ test("repository prevents duplicate wallet ownership across profiles", async () 
 test("repository contract typing exposes required methods", () => {
   const repository: ProfileWalletRepository = createInMemoryProfileWalletRepository();
   assert.equal(typeof repository.createWallet, "function");
+  assert.equal(typeof repository.findWalletById, "function");
   assert.equal(typeof repository.findWalletByChainAndAddress, "function");
   assert.equal(typeof repository.listWalletsByProfile, "function");
   assert.equal(typeof repository.updateWalletRole, "function");
   assert.equal(typeof repository.updateWalletVerificationStatus, "function");
+  assert.equal(typeof repository.markWalletVerified, "function");
   assert.equal(typeof repository.markWalletDisconnected, "function");
+});
+
+test("markWalletVerified sets verifiedAt and preserves role", async () => {
+  const repository = createInMemoryProfileWalletRepository();
+  const created = await repository.createWallet({
+    profileId: "profile-mark-verified",
+    chainNamespace: "eip155",
+    address: "0xMarkVerified",
+    role: "connected",
+  });
+
+  const verified = await repository.markWalletVerified(created.id);
+  assert.equal(verified.verificationStatus, "verified");
+  assert.ok(verified.verifiedAt);
+  assert.equal(verified.role, "connected");
 });
 
 test("role transitions remain unrestricted across valid enum values", async () => {

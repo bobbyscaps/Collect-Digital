@@ -25,6 +25,7 @@ export class ProfileWalletNotFoundError extends Error {
 
 export interface ProfileWalletRepository {
   createWallet(input: CreateProfileWalletInput): Promise<ProfileWallet>;
+  findWalletById(id: string): Promise<ProfileWallet | null>;
   findWalletByChainAndAddress(
     chainNamespace: WalletChainNamespace,
     normalizedAddress: string
@@ -35,6 +36,11 @@ export interface ProfileWalletRepository {
     id: string,
     verificationStatus: ProfileWalletVerificationStatus
   ): Promise<ProfileWallet>;
+  /**
+   * Marks a wallet verified and sets verifiedAt.
+   * Must preserve role (login/primary/connected) unchanged.
+   */
+  markWalletVerified(id: string, verifiedAt?: string): Promise<ProfileWallet>;
   markWalletDisconnected(id: string, disconnectedAt?: string): Promise<ProfileWallet>;
 }
 
@@ -96,6 +102,11 @@ export function createInMemoryProfileWalletRepository(): ProfileWalletRepository
     return freezeWallet(wallet);
   }
 
+  async function findWalletById(id: string): Promise<ProfileWallet | null> {
+    const wallet = wallets.get(id);
+    return wallet ? freezeWallet(wallet) : null;
+  }
+
   async function findWalletByChainAndAddress(
     chainNamespace: WalletChainNamespace,
     normalizedAddress: string
@@ -144,6 +155,23 @@ export function createInMemoryProfileWalletRepository(): ProfileWalletRepository
     return freezeWallet(updated);
   }
 
+  async function markWalletVerified(
+    id: string,
+    verifiedAt?: string
+  ): Promise<ProfileWallet> {
+    const wallet = getWalletOrThrow(id);
+    const updated: ProfileWallet = {
+      ...wallet,
+      verificationStatus: "verified",
+      verifiedAt: verifiedAt ?? nowIso(),
+      // Explicitly preserve role; verification must not alter login/primary.
+      role: wallet.role,
+      updatedAt: nowIso(),
+    };
+    wallets.set(id, updated);
+    return freezeWallet(updated);
+  }
+
   async function markWalletDisconnected(
     id: string,
     disconnectedAt?: string
@@ -160,10 +188,12 @@ export function createInMemoryProfileWalletRepository(): ProfileWalletRepository
 
   return {
     createWallet,
+    findWalletById,
     findWalletByChainAndAddress,
     listWalletsByProfile,
     updateWalletRole,
     updateWalletVerificationStatus,
+    markWalletVerified,
     markWalletDisconnected,
   };
 }

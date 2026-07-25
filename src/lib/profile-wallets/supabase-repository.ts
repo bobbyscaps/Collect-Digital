@@ -114,6 +114,22 @@ export function createSupabaseProfileWalletRepository(): ProfileWalletRepository
       return mapRow(data);
     },
 
+    async findWalletById(id: string): Promise<ProfileWallet | null> {
+      const supabase = requireClient();
+      const { data, error } = await supabase
+        .from("profile_wallets")
+        .select(
+          "id, profile_id, chain_namespace, address, normalized_address, role, verification_status, verified_at, disconnected_at, created_at, updated_at"
+        )
+        .eq("id", id)
+        .maybeSingle<ProfileWalletRow>();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+      return data ? mapRow(data) : null;
+    },
+
     async findWalletByChainAndAddress(
       chainNamespace: WalletChainNamespace,
       normalizedAddress: string
@@ -182,6 +198,34 @@ export function createSupabaseProfileWalletRepository(): ProfileWalletRepository
           verification_status: verificationStatus,
           verified_at:
             verificationStatus === "verified" ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select(
+          "id, profile_id, chain_namespace, address, normalized_address, role, verification_status, verified_at, disconnected_at, created_at, updated_at"
+        )
+        .maybeSingle<ProfileWalletRow>();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+      if (!data) {
+        throw new ProfileWalletNotFoundError(`Profile wallet not found: ${id}`);
+      }
+      return mapRow(data);
+    },
+
+    async markWalletVerified(
+      id: string,
+      verifiedAt?: string
+    ): Promise<ProfileWallet> {
+      const supabase = requireClient();
+      const timestamp = verifiedAt ?? new Date().toISOString();
+      const { data, error } = await supabase
+        .from("profile_wallets")
+        .update({
+          verification_status: "verified",
+          verified_at: timestamp,
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
