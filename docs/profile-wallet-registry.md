@@ -14,6 +14,9 @@ multiple wallets with one Collect Digital profile.
 
 ## Scope boundary
 
-This PR does **not** add signature verification, holdings ingestion, provider
-queries, or scoring integration. It only adds domain contracts, normalization,
-repository contracts, and persistence schema.
+This PR adds domain contracts, normalization, repository contracts, and
+persistence schema for linked wallets.
+
+Signature ownership verification lives in PR4
+(`docs/wallet-ownership-verification.md`). This registry PR does **not** ingest
+holdings, query providers for collector metrics, or integrate scoring.
