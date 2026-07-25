@@ -93,11 +93,14 @@ test("repository contract exposes required inventory methods", () => {
     createInMemoryWalletInventoryRepository();
   assert.equal(typeof repository.upsertHoldings, "function");
   assert.equal(typeof repository.listHoldingsByWallet, "function");
+  assert.equal(typeof repository.listHoldingsByWallets, "function");
+  assert.equal(typeof repository.listHoldingsByCollection, "function");
   assert.equal(typeof repository.removeHoldingsNotIn, "function");
   assert.equal(typeof repository.replaceWalletInventory, "function");
   assert.equal(typeof repository.startSync, "function");
   assert.equal(typeof repository.completeSync, "function");
   assert.equal(typeof repository.findLatestSync, "function");
+  assert.equal(typeof repository.findLatestSuccessfulSync, "function");
   assert.equal(typeof repository.updateSyncStatus, "function");
 });
 
@@ -144,20 +147,68 @@ test("Solana normalization supports standard and programmable NFTs", () => {
   const standard = normalizeSolanaProviderHolding({
     mint: "SoLmint111",
     amount: 1,
-    collection: { address: "provider-collection" },
+    collection: { address: "VerifiedCollection111" },
     interface: "V1_NFT",
   });
   assert.ok(standard);
   assert.equal(standard.assetStandard, "solana_nft");
-  assert.equal(standard.collectionId, null);
+  // Verified collection address is retained for grouping (not a marketplace slug).
+  assert.equal(standard.collectionId, "VerifiedCollection111");
 
   const pnft = normalizeSolanaProviderHolding({
     mint: "SoLpnft222",
     tokenStandard: "ProgrammableNonFungible",
   });
   assert.equal(pnft?.assetStandard, "solana_pnft");
+  assert.equal(pnft?.collectionId, null);
 
   assert.equal(normalizeSolanaProviderHoldings([{ amount: 1 }]).length, 0);
+});
+
+test("Solana verified collection key groups multiple mints; mint-only falls back", async () => {
+  const profileWallets = createInMemoryProfileWalletRepository();
+  const created = await profileWallets.createWallet({
+    profileId: "profile-sol-collection",
+    chainNamespace: "solana",
+    address: "SoLWalletForCollection111111111111111",
+    role: "connected",
+  });
+  const wallet = await profileWallets.markWalletVerified(created.id);
+
+  const withCollection = normalizeProviderHolding(
+    {
+      contractAddress: "MintOne",
+      tokenId: "MintOne",
+      assetStandard: "solana_nft",
+      quantity: "1",
+      collectionId: "VerifiedCollectionKey",
+      acquiredAt: null,
+    },
+    {
+      wallet,
+      sourceProvider: "sol-test",
+      lastSeenAt: "2026-07-25T12:00:00.000Z",
+    }
+  );
+  assert.equal(withCollection.collectionId, "solana:VerifiedCollectionKey");
+  assert.equal(withCollection.contractAddress, "MintOne");
+
+  const mintOnly = normalizeProviderHolding(
+    {
+      contractAddress: "MintAlone",
+      tokenId: "MintAlone",
+      assetStandard: "solana_nft",
+      quantity: "1",
+      collectionId: null,
+      acquiredAt: null,
+    },
+    {
+      wallet,
+      sourceProvider: "sol-test",
+      lastSeenAt: "2026-07-25T12:00:00.000Z",
+    }
+  );
+  assert.equal(mintOnly.collectionId, "solana:MintAlone");
 });
 
 test("unknown asset standard is stored as unknown rather than rejected", () => {
@@ -185,7 +236,7 @@ test("address normalization lowercases EVM and preserves Solana casing", () => {
   );
 });
 
-test("collection identity uses chainNamespace + contractAddress only", async () => {
+test("EVM collection identity uses contract address and ignores marketplace ids", async () => {
   const { wallet } = await createVerifiedWallet();
   const normalized = normalizeProviderHolding(
     item({

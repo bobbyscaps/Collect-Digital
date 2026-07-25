@@ -45,6 +45,25 @@ function mapSolanaAssetStandard(raw: SolanaProviderNftHolding): AssetStandard {
   return coerceAssetStandard(raw.tokenStandard ?? raw.interface);
 }
 
+/**
+ * Extracts the on-chain Metaplex verified collection address when present.
+ * Marketplace/catalog-only identifiers are not invented here — only the
+ * verified collection key/address supplied by the upstream-shaped payload.
+ */
+export function extractSolanaVerifiedCollectionAddress(
+  raw: SolanaProviderNftHolding
+): string | null {
+  if (typeof raw.collection === "string") {
+    const trimmed = raw.collection.trim();
+    return trimmed || null;
+  }
+  if (raw.collection && typeof raw.collection === "object") {
+    const key = (raw.collection.key ?? raw.collection.address ?? "").trim();
+    return key || null;
+  }
+  return null;
+}
+
 export function normalizeSolanaProviderHolding(
   raw: SolanaProviderNftHolding
 ): ProviderInventoryItem | null {
@@ -60,8 +79,8 @@ export function normalizeSolanaProviderHolding(
     tokenId: mint,
     assetStandard: mapSolanaAssetStandard(raw),
     quantity: String(raw.amount ?? "1"),
-    // Provider collection keys/addresses are intentionally dropped.
-    collectionId: null,
+    // On-chain verified collection address for grouping; null when absent.
+    collectionId: extractSolanaVerifiedCollectionAddress(raw),
     acquiredAt: raw.acquiredAt ?? null,
   };
 }

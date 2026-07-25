@@ -46,6 +46,20 @@ export interface WalletInventoryRepository {
   ): Promise<readonly NormalizedHolding[]>;
   listHoldingsByWallet(walletId: string): Promise<readonly NormalizedHolding[]>;
   /**
+   * Read-only: retrieve normalized holdings for many wallets (order undefined).
+   * Used by collector analysis; never mutates inventory.
+   */
+  listHoldingsByWallets(
+    walletIds: readonly string[]
+  ): Promise<readonly NormalizedHolding[]>;
+  /**
+   * Read-only: retrieve holdings grouped by stable collection identity
+   * (`${chainNamespace}:${contractAddress}`).
+   */
+  listHoldingsByCollection(
+    collectionId: string
+  ): Promise<readonly NormalizedHolding[]>;
+  /**
    * Removes holdings for a wallet whose identity keys are not in keepKeys.
    * keepKeys use holdingIdentityKey(...) format.
    * Callers must only invoke this after a complete successful provider fetch.
@@ -65,6 +79,13 @@ export interface WalletInventoryRepository {
   startSync(input: StartInventorySyncInput): Promise<WalletInventorySync>;
   completeSync(input: CompleteInventorySyncInput): Promise<WalletInventorySync>;
   findLatestSync(walletId: string): Promise<WalletInventorySync | null>;
+  /**
+   * Read-only: latest sync with syncStatus === "success" for a wallet.
+   * Failed/running/idle syncs are ignored so freshness reflects completed work.
+   */
+  findLatestSuccessfulSync(
+    walletId: string
+  ): Promise<WalletInventorySync | null>;
   updateSyncStatus(
     syncId: string,
     syncStatus: WalletInventorySyncStatus,
@@ -88,7 +109,16 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
   const holdings = new Map<string, NormalizedHolding>();
   const holdingsByWallet = new Map<string, Set<string>>();
   const syncs = new Map<string, WalletInventorySync>();
+  const syncIdsByWallet = new Map<string, string[]>();
   const latestSyncByWallet = new Map<string, string>();
+
+  function trackWalletSync(walletId: string, syncId: string) {
+    const list = syncIdsByWallet.get(walletId) ?? [];
+    if (!list.includes(syncId)) {
+      list.push(syncId);
+      syncIdsByWallet.set(walletId, list);
+    }
+  }
 
   function trackWalletHolding(walletId: string, identity: string) {
     const set = holdingsByWallet.get(walletId) ?? new Set<string>();
@@ -177,6 +207,56 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
           .sort((a, b) => {
             const byContract = a.contractAddress.localeCompare(b.contractAddress);
             if (byContract !== 0) return byContract;
+            return a.tokenId.localeCompare(b.tokenId);
+          })
+          .map(freezeHolding)
+      );
+    },
+
+    async listHoldingsByWallets(
+      walletIds: readonly string[]
+    ): Promise<readonly NormalizedHolding[]> {
+      if (walletIds.length === 0) return Object.freeze([]);
+
+      const wanted = new Set(walletIds);
+      const results: NormalizedHolding[] = [];
+      for (const walletId of wanted) {
+        const identities = holdingsByWallet.get(walletId);
+        if (!identities) continue;
+        for (const identity of identities) {
+          const holding = holdings.get(identity);
+          if (holding) results.push(holding);
+        }
+      }
+
+      return Object.freeze(
+        results
+          .sort((a, b) => {
+            const byWallet = a.walletId.localeCompare(b.walletId);
+            if (byWallet !== 0) return byWallet;
+            const byContract = a.contractAddress.localeCompare(b.contractAddress);
+            if (byContract !== 0) return byContract;
+            return a.tokenId.localeCompare(b.tokenId);
+          })
+          .map(freezeHolding)
+      );
+    },
+
+    async listHoldingsByCollection(
+      collectionId: string
+    ): Promise<readonly NormalizedHolding[]> {
+      const results: NormalizedHolding[] = [];
+      for (const holding of holdings.values()) {
+        if (holding.collectionId === collectionId) {
+          results.push(holding);
+        }
+      }
+
+      return Object.freeze(
+        results
+          .sort((a, b) => {
+            const byWallet = a.walletId.localeCompare(b.walletId);
+            if (byWallet !== 0) return byWallet;
             return a.tokenId.localeCompare(b.tokenId);
           })
           .map(freezeHolding)
@@ -295,6 +375,7 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
         updatedAt: timestamp,
       };
       syncs.set(sync.id, sync);
+      trackWalletSync(input.walletId, sync.id);
       latestSyncByWallet.set(input.walletId, sync.id);
       return freezeSync(sync);
     },
@@ -316,6 +397,7 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
         updatedAt: completedAt,
       };
       syncs.set(updated.id, updated);
+      trackWalletSync(updated.walletId, updated.id);
       latestSyncByWallet.set(updated.walletId, updated.id);
       return freezeSync(updated);
     },
@@ -325,6 +407,28 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
       if (!id) return null;
       const sync = syncs.get(id);
       return sync ? freezeSync(sync) : null;
+    },
+
+    async findLatestSuccessfulSync(
+      walletId: string
+    ): Promise<WalletInventorySync | null> {
+      const ids = syncIdsByWallet.get(walletId) ?? [];
+      let latest: WalletInventorySync | null = null;
+      let latestMs = Number.NEGATIVE_INFINITY;
+
+      for (const id of ids) {
+        const sync = syncs.get(id);
+        if (!sync || sync.syncStatus !== "success") continue;
+        const stamp = sync.syncCompletedAt ?? sync.syncStartedAt;
+        const ms = Date.parse(stamp);
+        if (Number.isNaN(ms)) continue;
+        if (ms > latestMs) {
+          latestMs = ms;
+          latest = sync;
+        }
+      }
+
+      return latest ? freezeSync(latest) : null;
     },
 
     async updateSyncStatus(

@@ -58,9 +58,32 @@ function normalizeQuantity(quantity: string): string {
 }
 
 /**
+ * Resolves the address component used for stable collection identity.
+ *
+ * - EVM: always the NFT contract address (adapter collectionId ignored —
+ *   marketplace slugs/catalog ids must never become collection identity).
+ * - Solana: Metaplex verified collection address when the adapter supplies
+ *   one; otherwise the mint (per-mint singleton — documented PR5 limitation
+ *   when no verified collection key is available).
+ */
+export function resolveCollectionAddress(
+  chainNamespace: WalletChainNamespace,
+  item: Pick<ProviderInventoryItem, "contractAddress" | "collectionId">,
+  normalizedContractAddress: string
+): string {
+  if (chainNamespace === "solana") {
+    const verifiedCollection = item.collectionId?.trim();
+    if (verifiedCollection) {
+      return normalizeContractAddress("solana", verifiedCollection);
+    }
+  }
+  return normalizedContractAddress;
+}
+
+/**
  * Maps a provider-independent inventory item into the internal holding model.
- * Provider collection IDs are ignored; collectionId is derived from
- * (chainNamespace + contractAddress) only.
+ * Collection identity is `${chainNamespace}:${collectionAddress}` where
+ * collectionAddress comes from resolveCollectionAddress(...).
  */
 export function normalizeProviderHolding(
   item: ProviderInventoryItem,
@@ -74,6 +97,11 @@ export function normalizeProviderHolding(
     context.wallet.chainNamespace,
     item.contractAddress
   );
+  const collectionAddress = resolveCollectionAddress(
+    context.wallet.chainNamespace,
+    item,
+    contractAddress
+  );
 
   return {
     walletId: context.wallet.id,
@@ -84,7 +112,7 @@ export function normalizeProviderHolding(
     quantity: normalizeQuantity(item.quantity),
     collectionId: stableCollectionId(
       context.wallet.chainNamespace,
-      contractAddress
+      collectionAddress
     ),
     ownerAddress,
     acquiredAt: item.acquiredAt ?? null,
