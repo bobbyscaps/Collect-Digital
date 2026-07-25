@@ -1,25 +1,38 @@
 import type { ProfileWallet } from "@/lib/profile-wallets/domain";
 import type { WalletVerificationChallenge } from "@/lib/wallet-verification/domain";
 
+/**
+ * Canonical server-side ownership challenge message.
+ *
+ * Callers must reconstruct this from persisted challenge + wallet rows.
+ * Never accept arbitrary client-provided message text as the source of truth.
+ */
 export function buildWalletOwnershipChallengeMessage(input: {
   challenge: Pick<
     WalletVerificationChallenge,
-    "nonce" | "expiresAt" | "chainNamespace" | "profileId"
+    | "profileId"
+    | "walletId"
+    | "nonce"
+    | "chainNamespace"
+    | "createdAt"
+    | "expiresAt"
   >;
-  wallet: Pick<ProfileWallet, "address" | "normalizedAddress" | "chainNamespace">;
+  wallet: Pick<ProfileWallet, "normalizedAddress" | "chainNamespace">;
 }): string {
   const { challenge, wallet } = input;
   return [
-    "Collect Digital — verify wallet ownership",
+    "Collect Digital Wallet Ownership Verification",
     "",
-    `Profile: ${challenge.profileId}`,
-    `Namespace: ${challenge.chainNamespace}`,
-    `Wallet: ${wallet.address}`,
-    `Normalized: ${wallet.normalizedAddress}`,
+    "Intent: Prove control of the listed wallet for Collect Digital profile binding.",
+    "Signing this message does not initiate a blockchain transaction.",
+    "Signing does not grant spending permissions or transfer assets.",
+    "",
+    `Profile ID: ${challenge.profileId}`,
+    `Wallet ID: ${challenge.walletId}`,
+    `Normalized Address: ${wallet.normalizedAddress}`,
+    `Chain Namespace: ${challenge.chainNamespace}`,
     `Nonce: ${challenge.nonce}`,
-    `Expires: ${challenge.expiresAt}`,
-    "",
-    "Signing this message proves you control this wallet.",
-    "It does not grant spending permissions.",
+    `Issued At: ${challenge.createdAt}`,
+    `Expires At: ${challenge.expiresAt}`,
   ].join("\n");
 }

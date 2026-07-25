@@ -10,6 +10,19 @@ linked wallet address. It is the verification foundation only.
 - On success the wallet is marked `verified` and `verifiedAt` is set.
 - Wallet roles (`login`, `primary`, `connected`) are preserved unchanged.
 
+## Security model
+
+- **Trusted profileId**: service methods take `AuthenticatedProfileContext`
+  constructed only from server-side auth. Optional client `claimedProfileId`
+  values are compared and rejected on mismatch.
+- **Canonical message**: the signed message is always built server-side from
+  persisted challenge + wallet rows. Client message text is never trusted.
+- **Atomic completion**: challenge consume + wallet verify commit together via
+  Postgres RPC `complete_wallet_ownership_verification` (or the in-memory
+  transactional helper in tests). Concurrent reuse of one challenge is rejected
+  by a conditional `consumed_at IS NULL` update.
+- **Nonce**: `crypto.randomBytes(32)` hex (256-bit), unique in the database.
+
 ## What verification does not do
 
 - It does **not** ingest wallet holdings.

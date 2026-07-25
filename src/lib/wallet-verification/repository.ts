@@ -27,10 +27,20 @@ export interface WalletVerificationChallengeRepository {
   findActiveChallenge(
     input: FindActiveChallengeInput
   ): Promise<WalletVerificationChallenge | null>;
+  /**
+   * Conditionally consumes a challenge (must be unconsumed and unexpired).
+   * Database implementations use a single conditional UPDATE as the
+   * single-use enforcement boundary.
+   */
   consumeChallenge(
     id: string,
     consumedAt?: string
   ): Promise<WalletVerificationChallenge>;
+  /**
+   * Test/in-memory helper used by atomic completion rollback.
+   * Supabase relies on transaction rollback instead.
+   */
+  rollbackConsumeChallenge?(id: string): Promise<void>;
 }
 
 function nowIso(now?: Date) {
@@ -43,8 +53,9 @@ function freezeChallenge(
   return Object.freeze({ ...challenge });
 }
 
+/** 256-bit cryptographically secure nonce (hex-encoded). */
 export function createChallengeNonce(): string {
-  return randomBytes(16).toString("hex");
+  return randomBytes(32).toString("hex");
 }
 
 export function createInMemoryWalletVerificationChallengeRepository(): WalletVerificationChallengeRepository {
@@ -115,6 +126,7 @@ export function createInMemoryWalletVerificationChallengeRepository(): WalletVer
       const challenge = getOrThrow(id);
       const now = consumedAt ? new Date(consumedAt) : new Date();
 
+      // Conditional single-use gate (mirrors SQL UPDATE ... WHERE consumed_at IS NULL).
       if (isChallengeConsumed(challenge)) {
         throw new ConsumedChallengeError(
           `Wallet verification challenge already consumed: ${id}`
@@ -132,6 +144,14 @@ export function createInMemoryWalletVerificationChallengeRepository(): WalletVer
       };
       challenges.set(id, updated);
       return freezeChallenge(updated);
+    },
+
+    async rollbackConsumeChallenge(id: string): Promise<void> {
+      const challenge = getOrThrow(id);
+      challenges.set(id, {
+        ...challenge,
+        consumedAt: null,
+      });
     },
   };
 }

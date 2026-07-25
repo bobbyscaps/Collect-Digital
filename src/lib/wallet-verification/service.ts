@@ -1,7 +1,16 @@
 import type { ProfileWallet } from "@/lib/profile-wallets/domain";
 import { isWalletChainNamespace } from "@/lib/profile-wallets/normalization";
 import type { ProfileWalletRepository } from "@/lib/profile-wallets/repository";
+import {
+  createAuthenticatedProfileContext,
+  resolveTrustedProfileId,
+  type AuthenticatedProfileContext,
+} from "@/lib/wallet-verification/auth-context";
 import { buildWalletOwnershipChallengeMessage } from "@/lib/wallet-verification/challenge-message";
+import {
+  createInMemoryCompleteWalletVerification,
+  type CompleteWalletVerification,
+} from "@/lib/wallet-verification/completion";
 import {
   ChallengeNotFoundError,
   DEFAULT_CHALLENGE_TTL_MS,
@@ -20,8 +29,12 @@ import type { SignatureVerifier } from "@/lib/wallet-verification/signature-veri
 import { createDefaultSignatureVerifier } from "@/lib/wallet-verification/verifiers/create-signature-verifier";
 
 export interface CreateVerificationChallengeRequest {
-  profileId: string;
   walletId: string;
+  /**
+   * Optional untrusted client claim. When present it must match auth.profileId.
+   * Trusted identity always comes from AuthenticatedProfileContext.
+   */
+  claimedProfileId?: string;
   ttlMs?: number;
   now?: Date;
 }
@@ -32,7 +45,6 @@ export interface CreateVerificationChallengeResult {
 }
 
 export interface VerifyWalletOwnershipRequest {
-  profileId: string;
   walletId: string;
   challengeId: string;
   signature: string;
@@ -41,19 +53,32 @@ export interface VerifyWalletOwnershipRequest {
    * challenge wallet after normalization; mismatches raise WrongWalletError.
    */
   address?: string;
+  /**
+   * Optional untrusted client claim. When present it must match auth.profileId.
+   */
+  claimedProfileId?: string;
   now?: Date;
 }
 
 export interface WalletVerificationService {
   createChallenge(
+    auth: AuthenticatedProfileContext,
     request: CreateVerificationChallengeRequest
   ): Promise<CreateVerificationChallengeResult>;
-  verifyOwnership(request: VerifyWalletOwnershipRequest): Promise<ProfileWallet>;
+  verifyOwnership(
+    auth: AuthenticatedProfileContext,
+    request: VerifyWalletOwnershipRequest
+  ): Promise<ProfileWallet>;
 }
 
 export interface CreateWalletVerificationServiceOptions {
   profileWallets: ProfileWalletRepository;
   challenges: WalletVerificationChallengeRepository;
+  /**
+   * Atomic consume+verify. Defaults to the in-memory transactional helper.
+   * Production wiring should pass createSupabaseCompleteWalletVerification().
+   */
+  completeVerification?: CompleteWalletVerification;
   signatureVerifier?: SignatureVerifier;
 }
 
@@ -81,14 +106,26 @@ export function createWalletVerificationService(
 ): WalletVerificationService {
   const signatureVerifier =
     options.signatureVerifier ?? createDefaultSignatureVerifier();
+  const completeVerification =
+    options.completeVerification ??
+    createInMemoryCompleteWalletVerification({
+      challenges: options.challenges,
+      profileWallets: options.profileWallets,
+    });
 
   return {
     async createChallenge(
+      auth: AuthenticatedProfileContext,
       request: CreateVerificationChallengeRequest
     ): Promise<CreateVerificationChallengeResult> {
+      const profileId = resolveTrustedProfileId({
+        auth,
+        claimedProfileId: request.claimedProfileId,
+      });
+
       const wallet = await requireOwnedWallet(
         options.profileWallets,
-        request.profileId,
+        profileId,
         request.walletId
       );
 
@@ -101,7 +138,7 @@ export function createWalletVerificationService(
       const expiresAt = new Date(now.getTime() + ttlMs).toISOString();
 
       const challenge = await options.challenges.createChallenge({
-        profileId: request.profileId,
+        profileId,
         walletId: wallet.id,
         nonce: createChallengeNonce(),
         chainNamespace: wallet.chainNamespace,
@@ -115,11 +152,17 @@ export function createWalletVerificationService(
     },
 
     async verifyOwnership(
+      auth: AuthenticatedProfileContext,
       request: VerifyWalletOwnershipRequest
     ): Promise<ProfileWallet> {
+      const profileId = resolveTrustedProfileId({
+        auth,
+        claimedProfileId: request.claimedProfileId,
+      });
+
       const wallet = await requireOwnedWallet(
         options.profileWallets,
-        request.profileId,
+        profileId,
         request.walletId
       );
 
@@ -143,7 +186,7 @@ export function createWalletVerificationService(
       const now = request.now ?? new Date();
       const challenge = await options.challenges.findActiveChallenge({
         id: request.challengeId,
-        profileId: request.profileId,
+        profileId,
         walletId: request.walletId,
         now,
       });
@@ -164,6 +207,7 @@ export function createWalletVerificationService(
         throw new UnsupportedNamespaceError(challenge.chainNamespace);
       }
 
+      // Canonical message is always reconstructed server-side from persisted rows.
       const message = buildWalletOwnershipChallengeMessage({ challenge, wallet });
       const valid = await signatureVerifier.verify({
         chainNamespace: wallet.chainNamespace,
@@ -176,20 +220,16 @@ export function createWalletVerificationService(
         throw new InvalidSignatureError();
       }
 
-      // Consume before marking verified so retries cannot reuse the challenge.
-      await options.challenges.consumeChallenge(
-        challenge.id,
-        now.toISOString()
-      );
-
       const roleBefore = wallet.role;
-      const verified = await options.profileWallets.markWalletVerified(
-        wallet.id,
-        now.toISOString()
-      );
+      const { wallet: verified } = await completeVerification({
+        challengeId: challenge.id,
+        profileId,
+        walletId: wallet.id,
+        verifiedAt: now.toISOString(),
+        now,
+      });
 
       if (verified.role !== roleBefore) {
-        // Defensive invariant: verification must never mutate wallet roles.
         throw new Error(
           "Wallet verification unexpectedly modified wallet role."
         );
@@ -199,3 +239,5 @@ export function createWalletVerificationService(
     },
   };
 }
+
+export { createAuthenticatedProfileContext };
