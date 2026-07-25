@@ -383,6 +383,45 @@ export function createSupabaseWalletInventoryRepository(): WalletInventoryReposi
       return data ? mapSync(data as WalletInventorySyncRow) : null;
     },
 
+    async findLatestSuccessfulSyncs(
+      walletIds: readonly string[]
+    ): Promise<ReadonlyMap<string, WalletInventorySync | null>> {
+      const uniqueIds = Array.from(new Set(walletIds));
+      const result = new Map<string, WalletInventorySync | null>();
+      for (const walletId of uniqueIds) {
+        result.set(walletId, null);
+      }
+      if (uniqueIds.length === 0) return result;
+
+      const client = requireClient();
+      const { data, error } = await client
+        .from("wallet_inventory_syncs")
+        .select("*")
+        .in("wallet_id", uniqueIds)
+        .eq("sync_status", "success")
+        .order("sync_completed_at", { ascending: false });
+
+      if (error) {
+        throw new Error(
+          `Failed to load latest successful inventory syncs: ${error.message}`
+        );
+      }
+
+      const latestMsByWallet = new Map<string, number>();
+      for (const row of (data as WalletInventorySyncRow[] | null) ?? []) {
+        const sync = mapSync(row);
+        const stamp = sync.syncCompletedAt ?? sync.syncStartedAt;
+        const ms = Date.parse(stamp);
+        if (Number.isNaN(ms)) continue;
+        const previous = latestMsByWallet.get(sync.walletId);
+        if (previous != null && previous >= ms) continue;
+        latestMsByWallet.set(sync.walletId, ms);
+        result.set(sync.walletId, sync);
+      }
+
+      return result;
+    },
+
     async updateSyncStatus(
       syncId: string,
       syncStatus: WalletInventorySyncStatus,
