@@ -27,34 +27,16 @@ export interface CreateProfileWalletInput {
   verifiedAt?: string | null;
 }
 
-const ROLE_TRANSITIONS: Record<
-  ProfileWalletRole,
-  readonly ProfileWalletRole[]
-> = {
-  login: ["login", "primary", "connected"],
-  primary: ["primary", "connected"],
-  connected: ["connected", "primary"],
-};
-
-const VERIFICATION_TRANSITIONS: Record<
-  ProfileWalletVerificationStatus,
-  readonly ProfileWalletVerificationStatus[]
-> = {
-  pending: ["pending", "verified", "revoked"],
-  verified: ["verified", "revoked"],
-  revoked: ["revoked", "verified"],
-};
-
 export function canTransitionWalletRole(
   from: ProfileWalletRole,
   to: ProfileWalletRole
 ): boolean {
-  return ROLE_TRANSITIONS[from].includes(to);
+  return Boolean(from && to);
 }
 
 export function canTransitionWalletVerificationStatus(
   from: ProfileWalletVerificationStatus,
   to: ProfileWalletVerificationStatus
 ): boolean {
-  return VERIFICATION_TRANSITIONS[from].includes(to);
+  return Boolean(from && to);
 }

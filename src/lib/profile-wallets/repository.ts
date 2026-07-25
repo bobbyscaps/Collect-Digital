@@ -7,10 +7,6 @@ import type {
   ProfileWalletVerificationStatus,
   WalletChainNamespace,
 } from "@/lib/profile-wallets/domain";
-import {
-  canTransitionWalletRole,
-  canTransitionWalletVerificationStatus,
-} from "@/lib/profile-wallets/domain";
 import { normalizeWalletAddress } from "@/lib/profile-wallets/normalization";
 
 export class ProfileWalletOwnershipConflictError extends Error {
@@ -24,13 +20,6 @@ export class ProfileWalletNotFoundError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ProfileWalletNotFoundError";
-  }
-}
-
-export class ProfileWalletTransitionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ProfileWalletTransitionError";
   }
 }
 
@@ -130,11 +119,6 @@ export function createInMemoryProfileWalletRepository(): ProfileWalletRepository
     role: ProfileWalletRole
   ): Promise<ProfileWallet> {
     const wallet = getWalletOrThrow(id);
-    if (!canTransitionWalletRole(wallet.role, role)) {
-      throw new ProfileWalletTransitionError(
-        `Invalid role transition: ${wallet.role} -> ${role}`
-      );
-    }
     const updated: ProfileWallet = {
       ...wallet,
       role,
@@ -149,16 +133,6 @@ export function createInMemoryProfileWalletRepository(): ProfileWalletRepository
     verificationStatus: ProfileWalletVerificationStatus
   ): Promise<ProfileWallet> {
     const wallet = getWalletOrThrow(id);
-    if (
-      !canTransitionWalletVerificationStatus(
-        wallet.verificationStatus,
-        verificationStatus
-      )
-    ) {
-      throw new ProfileWalletTransitionError(
-        `Invalid verification transition: ${wallet.verificationStatus} -> ${verificationStatus}`
-      );
-    }
     const updated: ProfileWallet = {
       ...wallet,
       verificationStatus,

@@ -14,7 +14,6 @@ import {
   createInMemoryProfileWalletRepository,
   ProfileWalletOwnershipConflictError,
   type ProfileWalletRepository,
-  ProfileWalletTransitionError,
 } from "@/lib/profile-wallets/repository";
 
 test("normalizes EVM addresses to lowercase", () => {
@@ -69,9 +68,10 @@ test("repository contract typing exposes required methods", () => {
   assert.equal(typeof repository.markWalletDisconnected, "function");
 });
 
-test("role transition helpers and repository updates enforce valid transitions", async () => {
+test("role transitions remain unrestricted across valid enum values", async () => {
   assert.equal(canTransitionWalletRole("login", "primary"), true);
-  assert.equal(canTransitionWalletRole("primary", "login"), false);
+  assert.equal(canTransitionWalletRole("primary", "login"), true);
+  assert.equal(canTransitionWalletRole("connected", "primary"), true);
 
   const repository = createInMemoryProfileWalletRepository();
   const created = await repository.createWallet({
@@ -83,16 +83,14 @@ test("role transition helpers and repository updates enforce valid transitions",
 
   const promoted = await repository.updateWalletRole(created.id, "primary");
   assert.equal(promoted.role, "primary");
-
-  await assert.rejects(
-    () => repository.updateWalletRole(promoted.id, "login"),
-    ProfileWalletTransitionError
-  );
+  const relogin = await repository.updateWalletRole(promoted.id, "login");
+  assert.equal(relogin.role, "login");
 });
 
-test("verification transitions enforce valid state moves", async () => {
+test("verification transitions permit reverification and keep revoked wallets auditable", async () => {
   assert.equal(canTransitionWalletVerificationStatus("pending", "verified"), true);
-  assert.equal(canTransitionWalletVerificationStatus("verified", "pending"), false);
+  assert.equal(canTransitionWalletVerificationStatus("verified", "pending"), true);
+  assert.equal(canTransitionWalletVerificationStatus("revoked", "verified"), true);
 
   const repository = createInMemoryProfileWalletRepository();
   const created = await repository.createWallet({
@@ -110,8 +108,22 @@ test("verification transitions enforce valid state moves", async () => {
   assert.equal(verified.verificationStatus, "verified");
   assert.ok(verified.verifiedAt);
 
-  await assert.rejects(
-    () => repository.updateWalletVerificationStatus(verified.id, "pending"),
-    ProfileWalletTransitionError
+  const revoked = await repository.updateWalletVerificationStatus(verified.id, "revoked");
+  assert.equal(revoked.verificationStatus, "revoked");
+  assert.equal(revoked.verifiedAt, null);
+
+  const reverified = await repository.updateWalletVerificationStatus(
+    verified.id,
+    "verified"
   );
+  assert.equal(reverified.verificationStatus, "verified");
+  assert.ok(reverified.verifiedAt);
+
+  const disconnected = await repository.markWalletDisconnected(reverified.id);
+  assert.ok(disconnected.disconnectedAt);
+
+  const listed = await repository.listWalletsByProfile("profile-verify");
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].verificationStatus, "verified");
+  assert.ok(listed[0].disconnectedAt);
 });

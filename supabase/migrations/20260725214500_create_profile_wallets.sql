@@ -21,8 +21,3 @@ create table if not exists public.profile_wallets (
 
 create index if not exists profile_wallets_profile_id_idx
   on public.profile_wallets (profile_id);
-
--- The unique constraint already creates a backing index. Keep an explicit
--- named index for predictable query-plan targeting and operational clarity.
-create index if not exists profile_wallets_chain_namespace_normalized_address_idx
-  on public.profile_wallets (chain_namespace, normalized_address);
