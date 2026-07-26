@@ -46,8 +46,7 @@ export default function CollectionPage() {
         data={identity.inventory.data}
         lastUpdatedAt={identity.inventory.lastUpdatedAt}
         message={identity.inventory.message}
-      >
-        {(data) => (
+        render={(data) => (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Collections" value={data.totalCollections} />
             <Stat label="Unique Tokens" value={data.uniqueTokenCount} />
@@ -66,7 +65,7 @@ export default function CollectionPage() {
             />
           </div>
         )}
-      </ProgressiveData>
+      />
 
       <ProfileSection
         title="Collection Summaries"
@@ -77,8 +76,7 @@ export default function CollectionPage() {
           data={identity.collectionSummaries.data}
           lastUpdatedAt={identity.collectionSummaries.lastUpdatedAt}
           message={identity.collectionSummaries.message}
-        >
-          {(collections) => (
+          render={(collections) => (
             <ul className="divide-y divide-white/5">
               {collections.map((collection) => (
                 <li
@@ -101,7 +99,7 @@ export default function CollectionPage() {
               ))}
             </ul>
           )}
-        </ProgressiveData>
+        />
       </ProfileSection>
 
       <ProfileSection title="NFT Gallery">

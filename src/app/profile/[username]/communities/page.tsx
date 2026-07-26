@@ -41,9 +41,7 @@ export default function CommunitiesPage() {
             </p>
           </div>
         }
-      >
-        {() => null}
-      </ProgressiveData>
+      />
     </ProfileSection>
   );
 }

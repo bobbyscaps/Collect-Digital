@@ -19,7 +19,7 @@ import {
   CollectorIdentityClientError,
   fetchMyCollectorIdentity,
 } from "@/lib/collector-identity/client";
-import { handleGetCollectorIdentityMe } from "@/app/api/collector-identity/me/route";
+import { handleGetCollectorIdentityMe } from "@/lib/collector-identity/http";
 import { createInMemoryProfileWalletRepository } from "@/lib/profile-wallets/repository";
 import { stableCollectionId } from "@/lib/wallet-inventory/domain";
 import {
@@ -101,13 +101,13 @@ function assertNoFabricatedMetrics(identity: CollectorIdentityResponse) {
   const serialized = JSON.stringify(identity).toLowerCase();
   const forbidden = [
     "elite flipper",
-    "flipper score",
-    "collector score",
     "sample data",
     "alchemy",
     "helius",
     "rawresponse",
     "providerpayload",
+    "floorprice",
+    "rarityrank",
   ];
   for (const key of forbidden) {
     assert.equal(
@@ -117,12 +117,16 @@ function assertNoFabricatedMetrics(identity: CollectorIdentityResponse) {
     );
   }
 
+  // Score/social modules may be named, but must never carry numeric fake data.
   assert.equal(identity.statusModules.collectorScore.state, "coming_soon");
+  assert.equal(identity.statusModules.collectorScore.data, null);
   assert.equal(identity.statusModules.collectionScores.state, "coming_soon");
+  assert.equal(identity.statusModules.collectionScores.data, null);
   assert.equal(identity.statusModules.communities.state, "coming_soon");
   assert.equal(identity.statusModules.followers.state, "coming_soon");
   assert.equal(identity.statusModules.following.state, "coming_soon");
   assert.equal(identity.achievements.state, "coming_soon");
+  assert.equal(identity.achievements.data, null);
   assert.equal(identity.schemaVersion, COLLECTOR_IDENTITY_API_SCHEMA_VERSION);
 }
 
@@ -515,7 +519,7 @@ for (const state of UI_STATES) {
                 : state === "stale"
                   ? "Showing last successfully persisted inventory."
                   : null,
-        children: (value) =>
+        render: (value) =>
           React.createElement("span", null, `value:${value.value}`),
       })
     );
@@ -606,8 +610,8 @@ test("docs describe progressive states and stale policy", () => {
     "Progressive data-state",
     "Coming Soon",
     "stale",
-    "Achievements (Permanent)",
-    "Status (Dynamic)",
+    "Achievements \\(Permanent\\)",
+    "Status \\(Dynamic\\)",
     "GET /api/collector-identity/me",
     "Never display fabricated data",
   ]) {

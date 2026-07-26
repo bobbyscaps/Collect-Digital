@@ -44,9 +44,7 @@ export default function BioPage() {
   if (identityLoading && !identity) {
     return (
       <ProfileSection title="Collector Identity">
-        <ProgressiveData state="loading" data={null}>
-          {() => null}
-        </ProgressiveData>
+        <ProgressiveData state="loading" data={null} />
       </ProfileSection>
     );
   }
@@ -54,9 +52,7 @@ export default function BioPage() {
   if (identityError && !identity) {
     return (
       <ProfileSection title="Collector Identity">
-        <ProgressiveData state="error" data={null} message={identityError}>
-          {() => null}
-        </ProgressiveData>
+        <ProgressiveData state="error" data={null} message={identityError} />
       </ProfileSection>
     );
   }
@@ -64,9 +60,11 @@ export default function BioPage() {
   if (!identity) {
     return (
       <ProfileSection title="Collector Identity">
-        <ProgressiveData state="empty" data={null} message="No identity loaded.">
-          {() => null}
-        </ProgressiveData>
+        <ProgressiveData
+          state="empty"
+          data={null}
+          message="No identity loaded."
+        />
       </ProfileSection>
     );
   }
@@ -76,24 +74,19 @@ export default function BioPage() {
       <div className="space-y-6 lg:col-span-2">
         <ProfileSection title="About">
           <ProgressiveData
-            state={
-              identity.identity.data?.bio
-                ? identity.identity.state
-                : "empty"
-            }
+            state={identity.identity.data?.bio ? identity.identity.state : "empty"}
             data={identity.identity.data}
             message={
               identity.identity.data?.bio
                 ? identity.identity.message
                 : "No bio yet."
             }
-          >
-            {(data) => (
+            render={(data) => (
               <p className="text-sm leading-relaxed text-foreground/90">
                 {data?.bio}
               </p>
             )}
-          </ProgressiveData>
+          />
         </ProfileSection>
 
         <ProfileSection
@@ -104,9 +97,7 @@ export default function BioPage() {
             state={identity.achievements.state}
             data={identity.achievements.data}
             message={identity.achievements.message}
-          >
-            {() => null}
-          </ProgressiveData>
+          />
         </ProfileSection>
 
         <ProfileSection title="Verified Wallets">
@@ -115,8 +106,7 @@ export default function BioPage() {
             data={identity.wallets.data}
             lastUpdatedAt={identity.wallets.lastUpdatedAt}
             message={identity.wallets.message}
-          >
-            {(data) => (
+            render={(data) => (
               <ul className="divide-y divide-white/5">
                 {data.verifiedWallets.map((wallet) => (
                   <li
@@ -136,7 +126,7 @@ export default function BioPage() {
                 ))}
               </ul>
             )}
-          </ProgressiveData>
+          />
         </ProfileSection>
       </div>
 
@@ -148,14 +138,13 @@ export default function BioPage() {
               state={identity.wallets.state}
               data={identity.wallets.data}
               message={identity.wallets.message}
-            >
-              {(data) => (
+              render={(data) => (
                 <p>
                   {data.verifiedWalletCount} verified wallet
                   {data.verifiedWalletCount === 1 ? "" : "s"}
                 </p>
               )}
-            </ProgressiveData>
+            />
 
             <ProgressiveData
               title="Inventory freshness"
@@ -163,29 +152,24 @@ export default function BioPage() {
               data={identity.inventory.data}
               lastUpdatedAt={identity.inventory.lastUpdatedAt}
               message={identity.inventory.message}
-            >
-              {(data) => (
+              render={(data) => (
                 <p className="capitalize">{data.inventoryStatus}</p>
               )}
-            </ProgressiveData>
+            />
 
             <ProgressiveData
               title="Collector Score"
               state={identity.statusModules.collectorScore.state}
               data={identity.statusModules.collectorScore.data}
               message={identity.statusModules.collectorScore.message}
-            >
-              {() => null}
-            </ProgressiveData>
+            />
 
             <ProgressiveData
               title="Communities"
               state={identity.statusModules.communities.state}
               data={identity.statusModules.communities.data}
               message={identity.statusModules.communities.message}
-            >
-              {() => null}
-            </ProgressiveData>
+            />
           </div>
         </ProfileSection>
 
@@ -194,8 +178,7 @@ export default function BioPage() {
             state={identity.identity.state}
             data={identity.identity.data}
             message={identity.identity.message}
-          >
-            {(data) => (
+            render={(data) => (
               <dl className="space-y-2 text-sm">
                 <div>
                   <dt className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -211,7 +194,7 @@ export default function BioPage() {
                 </div>
               </dl>
             )}
-          </ProgressiveData>
+          />
         </ProfileSection>
 
         <ProfileSection title="Badges">

@@ -16,8 +16,11 @@ import {
 } from "@/lib/collector-identity/client";
 import {
   loadingSection,
+  type CollectorIdentityCollectionSummaryData,
+  type CollectorIdentityIdentityData,
+  type CollectorIdentityInventoryData,
   type CollectorIdentityResponse,
-  type ProgressiveSection,
+  type CollectorIdentityWalletsData,
 } from "@/lib/collector-identity/api-models";
 import { deriveUsername } from "@/lib/profile/data";
 
@@ -53,30 +56,22 @@ function toInitials(label: string): string {
 }
 
 function loadingIdentity(profileId: string): CollectorIdentityResponse {
-  const loading = loadingSection();
   return {
     schemaVersion: 1,
     profileId,
-    identity: loading as ProgressiveSection<
-      CollectorIdentityResponse["identity"]["data"]
-    >,
-    wallets: loading as ProgressiveSection<
-      CollectorIdentityResponse["wallets"]["data"]
-    >,
-    inventory: loading as ProgressiveSection<
-      CollectorIdentityResponse["inventory"]["data"]
-    >,
-    collectionSummaries: loading as ProgressiveSection<
-      CollectorIdentityResponse["collectionSummaries"]["data"]
-    >,
+    identity: loadingSection<CollectorIdentityIdentityData>(),
+    wallets: loadingSection<CollectorIdentityWalletsData>(),
+    inventory: loadingSection<CollectorIdentityInventoryData>(),
+    collectionSummaries:
+      loadingSection<readonly CollectorIdentityCollectionSummaryData[]>(),
     statusModules: {
-      collectorScore: loading as ProgressiveSection<null>,
-      collectionScores: loading as ProgressiveSection<null>,
-      communities: loading as ProgressiveSection<null>,
-      followers: loading as ProgressiveSection<null>,
-      following: loading as ProgressiveSection<null>,
+      collectorScore: loadingSection<null>(),
+      collectionScores: loadingSection<null>(),
+      communities: loadingSection<null>(),
+      followers: loadingSection<null>(),
+      following: loadingSection<null>(),
     },
-    achievements: loading as ProgressiveSection<null>,
+    achievements: loadingSection<null>(),
   };
 }
 

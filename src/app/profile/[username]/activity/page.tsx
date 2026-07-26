@@ -46,9 +46,7 @@ export default function ActivityPage() {
             </p>
           </div>
         }
-      >
-        {() => null}
-      </ProgressiveData>
+      />
     </ProfileSection>
   );
 }

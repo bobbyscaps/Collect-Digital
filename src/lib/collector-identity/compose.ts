@@ -237,7 +237,7 @@ async function staleInventoryFallback(
           .map((holding) => holding.collectionId)
           .filter((id): id is string => Boolean(id))
       );
-      let totalQuantity = 0n;
+      let totalQuantity = BigInt(0);
       for (const holding of holdings) {
         try {
           totalQuantity += BigInt(holding.quantity);

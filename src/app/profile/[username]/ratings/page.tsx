@@ -54,9 +54,7 @@ export default function RatingsPage() {
               </p>
             </div>
           }
-        >
-          {() => null}
-        </ProgressiveData>
+        />
       </ProfileSection>
 
       <ProfileSection
@@ -67,9 +65,7 @@ export default function RatingsPage() {
           state={collectionScores?.state ?? "coming_soon"}
           data={collectionScores?.data ?? null}
           message={collectionScores?.message ?? "Collection Scores coming soon"}
-        >
-          {() => null}
-        </ProgressiveData>
+        />
       </ProfileSection>
     </div>
   );

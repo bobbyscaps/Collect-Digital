@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 import { AlertTriangle, Clock3, Inbox, Loader2, Sparkles } from "lucide-react";
 
 import type { ProgressiveDataState } from "@/lib/collector-identity/api-models";
@@ -15,7 +15,7 @@ export type ProgressiveDataProps<T> = {
   title?: string;
   className?: string;
   /** Live / stale / partial content renderer. Receives non-null data. */
-  children: (data: T) => ReactNode;
+  render?: (data: T) => ReactNode;
   /** Optional empty-state override. */
   empty?: ReactNode;
   /** Optional error-state override. */
@@ -113,7 +113,7 @@ export function ProgressiveData<T>({
   message = null,
   title,
   className,
-  children,
+  render,
   empty,
   error,
   comingSoon,
@@ -176,7 +176,9 @@ export function ProgressiveData<T>({
 
       {(state === "live" || state === "stale" || state === "partial") &&
         data != null && (
-          <div data-testid={`progressive-${state}`}>{children(data)}</div>
+          <div data-testid={`progressive-${state}`}>
+            {render ? render(data) : null}
+          </div>
         )}
 
       {(state === "live" || state === "stale" || state === "partial") &&

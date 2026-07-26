@@ -28,9 +28,7 @@ export default function ShowcasePage() {
               </p>
             </div>
           }
-        >
-          {() => null}
-        </ProgressiveData>
+        />
       </ProfileSection>
     </div>
   );

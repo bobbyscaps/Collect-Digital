@@ -249,9 +249,7 @@ export function ProfileHeader() {
                   data={identity.inventory.data}
                   lastUpdatedAt={identity.inventory.lastUpdatedAt}
                   message={identity.inventory.message}
-                >
-                  {() => null}
-                </ProgressiveData>
+                />
               )}
           </div>
         )}
