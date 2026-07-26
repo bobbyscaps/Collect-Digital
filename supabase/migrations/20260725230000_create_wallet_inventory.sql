@@ -55,6 +55,12 @@ create index if not exists wallet_inventory_syncs_wallet_id_idx
 create index if not exists wallet_inventory_syncs_wallet_started_idx
   on public.wallet_inventory_syncs (wallet_id, sync_started_at desc);
 
+-- Server-only persistence: no PostgREST access for anon/authenticated.
+alter table public.wallet_holdings enable row level security;
+alter table public.wallet_inventory_syncs enable row level security;
+revoke all on table public.wallet_holdings from anon, authenticated;
+revoke all on table public.wallet_inventory_syncs from anon, authenticated;
+
 -- Atomic inventory snapshot replacement for one wallet.
 -- Upserts changed rows, skips unchanged content, deletes stale identities.
 create or replace function public.replace_wallet_inventory(

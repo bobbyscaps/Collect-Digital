@@ -20,3 +20,8 @@ comment on table public.profiles is
 
 comment on column public.profiles.privy_user_id is
   'Trusted Privy JWT subject (e.g. did:privy:...). External auth identifier only — never a foreign key target for product data.';
+
+-- Server-only persistence: no PostgREST access for anon/authenticated.
+-- service_role bypasses RLS (Collect Digital APIs use the service role after Privy auth).
+alter table public.profiles enable row level security;
+revoke all on table public.profiles from anon, authenticated;

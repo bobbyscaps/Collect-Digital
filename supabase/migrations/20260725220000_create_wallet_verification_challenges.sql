@@ -24,3 +24,7 @@ create index if not exists wallet_verification_challenges_profile_id_idx
 
 create index if not exists wallet_verification_challenges_expires_at_idx
   on public.wallet_verification_challenges (expires_at);
+
+-- Server-only persistence: no PostgREST access for anon/authenticated.
+alter table public.wallet_verification_challenges enable row level security;
+revoke all on table public.wallet_verification_challenges from anon, authenticated;

@@ -40,4 +40,8 @@ Product tables (`profile_wallets`, `wallet_verification_challenges`, …) refere
 5. `20260725230000_create_wallet_inventory.sql`
 6. `20260725231000_create_provider_cache_entries.sql`
 
-Do not apply these to a live project from this task — source correction only.
+Each product table enables RLS with no anon/authenticated policies and revokes
+table privileges from those roles. Collect Digital APIs use `service_role`
+(which bypasses RLS) after Privy JWT verification.
+
+Apply chronologically to an empty Supabase project from local development.

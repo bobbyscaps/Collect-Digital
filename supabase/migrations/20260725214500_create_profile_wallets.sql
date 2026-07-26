@@ -22,3 +22,7 @@ create table if not exists public.profile_wallets (
 
 create index if not exists profile_wallets_profile_id_idx
   on public.profile_wallets (profile_id);
+
+-- Server-only persistence: no PostgREST access for anon/authenticated.
+alter table public.profile_wallets enable row level security;
+revoke all on table public.profile_wallets from anon, authenticated;

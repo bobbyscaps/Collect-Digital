@@ -17,3 +17,7 @@ create index if not exists provider_cache_entries_expires_at_idx
 
 comment on table public.provider_cache_entries is
   'TTL cache for provider adapter responses. Upserted by server via service_role.';
+
+-- Server-only persistence: no PostgREST access for anon/authenticated.
+alter table public.provider_cache_entries enable row level security;
+revoke all on table public.provider_cache_entries from anon, authenticated;
