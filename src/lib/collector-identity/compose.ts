@@ -19,6 +19,11 @@ import {
 import type { ProfileWalletRepository } from "@/lib/profile-wallets/repository";
 import type { WalletInventoryRepository } from "@/lib/wallet-inventory/repository";
 import type { AuthenticatedProfileContext } from "@/lib/wallet-verification/auth-context";
+import {
+  USER_FACING_SERVICE_UNAVAILABLE,
+  logTechnicalError,
+  toUserFacingErrorMessage,
+} from "@/lib/errors/user-facing";
 
 /**
  * Authenticated Collector Identity assembler.
@@ -274,12 +279,14 @@ async function staleInventoryFallback(
     // Fall through to error.
   }
 
+  logTechnicalError("collector-identity inventory fallback", cause);
   const message =
     cause instanceof InventoryUnavailableError
-      ? cause.message
-      : cause instanceof Error
-        ? cause.message
-        : "Inventory unavailable.";
+      ? toUserFacingErrorMessage(cause, USER_FACING_SERVICE_UNAVAILABLE)
+      : toUserFacingErrorMessage(
+          cause,
+          "Collectibles are temporarily unavailable. Please try again shortly."
+        );
 
   return {
     inventory: errorSection<CollectorIdentityInventoryData>(message),
@@ -340,10 +347,10 @@ export function createCollectorIdentityService(
           }
         }
       } catch (cause) {
+        // Never expose repository / infrastructure names to clients.
+        logTechnicalError("collector-identity wallets", cause);
         wallets = errorSection<CollectorIdentityWalletsData>(
-          cause instanceof Error
-            ? cause.message
-            : "Unable to load verified wallets."
+          toUserFacingErrorMessage(cause, USER_FACING_SERVICE_UNAVAILABLE)
         );
       }
 
@@ -352,13 +359,27 @@ export function createCollectorIdentityService(
         readonly CollectorIdentityCollectionSummaryData[]
       >;
 
-      if (verifiedWalletIds.length === 0) {
+      if (wallets.state === "error") {
+        // Registry unavailable — do not imply the user simply lacks wallets.
+        inventory = errorSection<CollectorIdentityInventoryData>(
+          wallets.message ??
+            "Wallet verification is temporarily unavailable. Please try again shortly."
+        );
+        collectionSummaries = errorSection<
+          readonly CollectorIdentityCollectionSummaryData[]
+        >(
+          wallets.message ??
+            "Wallet verification is temporarily unavailable. Please try again shortly."
+        );
+      } else if (verifiedWalletIds.length === 0) {
+        // Empty inventory is valid; UI uses the single Verify Wallet empty state
+        // and must not render this section message a second time.
         inventory = emptySection<CollectorIdentityInventoryData>(
-          "Inventory requires at least one verified wallet."
+          "Verify a wallet to sync your collectibles."
         );
         collectionSummaries = emptySection<
           readonly CollectorIdentityCollectionSummaryData[]
-        >("Collection summaries require at least one verified wallet.");
+        >("Verify a wallet to see collection summaries.");
       } else {
         try {
           const analysis = await options.analysis.analyzeCollectorInventory({

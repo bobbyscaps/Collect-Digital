@@ -4,7 +4,11 @@ import { Award, Wallet } from "lucide-react";
 
 import { useProfile } from "@/components/profile/profile-context";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
-import { hasNoVerifiedWallets } from "@/components/collector-identity/no-verified-wallets-empty-state";
+import {
+  hasNoVerifiedWallets,
+  hasVerifiedCollectorIdentity,
+  isWalletRegistryUnavailable,
+} from "@/components/collector-identity/no-verified-wallets";
 import { ProfileSection } from "@/components/profile/ui";
 import { LockedCard } from "@/components/auth/locked-card";
 
@@ -71,6 +75,8 @@ export default function BioPage() {
   }
 
   const noVerifiedWallets = hasNoVerifiedWallets(identity);
+  const registryUnavailable = isWalletRegistryUnavailable(identity);
+  const showCollectorScore = hasVerifiedCollectorIdentity(identity);
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -103,7 +109,20 @@ export default function BioPage() {
           />
         </ProfileSection>
 
-        {!noVerifiedWallets && (
+        {registryUnavailable && (
+          <ProfileSection title="Verified Wallets">
+            <ProgressiveData
+              state="error"
+              data={null}
+              message={
+                identity.wallets.message ??
+                "Wallet verification is temporarily unavailable. Please try again shortly."
+              }
+            />
+          </ProfileSection>
+        )}
+
+        {!noVerifiedWallets && !registryUnavailable && (
           <ProfileSection title="Verified Wallets">
             <ProgressiveData
               state={identity.wallets.state}
@@ -138,7 +157,19 @@ export default function BioPage() {
       <div className="space-y-6">
         <ProfileSection title="Current Status">
           <div className="space-y-4 text-sm">
-            {!noVerifiedWallets && (
+            {registryUnavailable && (
+              <ProgressiveData
+                title="Wallet verification"
+                state="error"
+                data={null}
+                message={
+                  identity.wallets.message ??
+                  "Wallet verification is temporarily unavailable. Please try again shortly."
+                }
+              />
+            )}
+
+            {!noVerifiedWallets && !registryUnavailable && (
               <>
                 <ProgressiveData
                   title="Wallet verification"
@@ -166,12 +197,14 @@ export default function BioPage() {
               </>
             )}
 
-            <ProgressiveData
-              title="Collector Score"
-              state={identity.statusModules.collectorScore.state}
-              data={identity.statusModules.collectorScore.data}
-              message={identity.statusModules.collectorScore.message}
-            />
+            {showCollectorScore && (
+              <ProgressiveData
+                title="Collector Score"
+                state={identity.statusModules.collectorScore.state}
+                data={identity.statusModules.collectorScore.data}
+                message={identity.statusModules.collectorScore.message}
+              />
+            )}
 
             <ProgressiveData
               title="Communities"

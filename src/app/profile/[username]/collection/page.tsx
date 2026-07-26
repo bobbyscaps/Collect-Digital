@@ -5,7 +5,10 @@ import { Layers } from "lucide-react";
 import { useProfile } from "@/components/profile/profile-context";
 import { LockedCard } from "@/components/auth/locked-card";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
-import { hasNoVerifiedWallets } from "@/components/collector-identity/no-verified-wallets-empty-state";
+import {
+  hasNoVerifiedWallets,
+  isWalletRegistryUnavailable,
+} from "@/components/collector-identity/no-verified-wallets";
 import { EmptyState, ProfileSection, Stat } from "@/components/profile/ui";
 
 export default function CollectionPage() {
@@ -40,11 +43,30 @@ export default function CollectionPage() {
     );
   }
 
+  if (isWalletRegistryUnavailable(identity)) {
+    return (
+      <ProfileSection title="Collection">
+        <ProgressiveData
+          state="error"
+          data={null}
+          message={
+            identity.wallets.message ??
+            "Wallet verification is temporarily unavailable. Please try again shortly."
+          }
+        />
+      </ProfileSection>
+    );
+  }
+
   // Header already shows the single no-verified-wallets empty state.
+  // Do not repeat inventory empty messaging here.
   if (hasNoVerifiedWallets(identity)) {
     return (
       <ProfileSection title="Collection">
-        <p className="text-sm text-muted-foreground">
+        <p
+          className="text-sm text-muted-foreground"
+          data-testid="collection-awaiting-verification"
+        >
           Collection inventory appears after you verify a wallet and sync
           collectibles.
         </p>

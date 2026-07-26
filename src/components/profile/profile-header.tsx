@@ -18,8 +18,9 @@ import { useGatedLogin } from "@/components/auth/gated-login";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
 import {
   hasNoVerifiedWallets,
-  NoVerifiedWalletsEmptyState,
-} from "@/components/collector-identity/no-verified-wallets-empty-state";
+  isWalletRegistryUnavailable,
+} from "@/components/collector-identity/no-verified-wallets";
+import { NoVerifiedWalletsEmptyState } from "@/components/collector-identity/no-verified-wallets-empty-state";
 import { useProfile } from "./profile-context";
 
 function HeaderStat({
@@ -64,9 +65,12 @@ export function ProfileHeader() {
     identity,
     identityLoading,
     identityError,
+    refreshIdentity,
   } = useProfile();
   const { requireLogin } = useGatedLogin();
   const [following, setFollowing] = useState(false);
+  const [verificationSessionActive, setVerificationSessionActive] =
+    useState(false);
 
   const handleFollow = () => {
     if (!viewerAuthenticated) {
@@ -84,6 +88,7 @@ export function ProfileHeader() {
   const hasVerifiedWallet =
     typeof verifiedCount === "number" ? verifiedCount > 0 : false;
   const noVerifiedWallets = hasNoVerifiedWallets(identity);
+  const registryUnavailable = isWalletRegistryUnavailable(identity);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
@@ -242,11 +247,33 @@ export function ProfileHeader() {
         {isOwner && (
           <div className="mt-4 space-y-3">
             {identityError && (
-              <p className="text-xs text-rose-200/90">{identityError}</p>
+              <p
+                className="text-sm text-rose-200/90"
+                data-testid="collector-identity-error"
+              >
+                {identityError}
+              </p>
             )}
-            {noVerifiedWallets ? (
-              <NoVerifiedWalletsEmptyState />
-            ) : (
+            {registryUnavailable && !identityError && (
+              <ProgressiveData
+                state="error"
+                data={null}
+                message={
+                  identity?.wallets.message ??
+                  "Wallet verification is temporarily unavailable. Please try again shortly."
+                }
+              />
+            )}
+            {(noVerifiedWallets || verificationSessionActive) &&
+              !registryUnavailable && (
+                <NoVerifiedWalletsEmptyState
+                  onIdentityRefresh={refreshIdentity}
+                  onSessionActiveChange={setVerificationSessionActive}
+                />
+              )}
+            {!noVerifiedWallets &&
+              !registryUnavailable &&
+              !verificationSessionActive &&
               identity &&
               identity.inventory.state !== "live" &&
               identity.inventory.state !== "loading" &&
@@ -257,8 +284,7 @@ export function ProfileHeader() {
                   lastUpdatedAt={identity.inventory.lastUpdatedAt}
                   message={identity.inventory.message}
                 />
-              )
-            )}
+              )}
           </div>
         )}
 

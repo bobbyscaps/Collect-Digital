@@ -5,6 +5,7 @@ import { Gauge } from "lucide-react";
 import { useProfile } from "@/components/profile/profile-context";
 import { LockedCard } from "@/components/auth/locked-card";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
+import { hasVerifiedCollectorIdentity } from "@/components/collector-identity/no-verified-wallets";
 import { ProfileSection } from "@/components/profile/ui";
 
 export default function RatingsPage() {
@@ -17,7 +18,7 @@ export default function RatingsPage() {
         description="Collector Score and Flipper Score are not implemented on Collector Identity yet. Collect Digital does not show sample ratings."
         cta="Log in to view identity"
         items={[
-          "Collector Score (coming soon)",
+          "Collector Score (after wallet verification)",
           "Collection Scores (coming soon)",
           "Verified wallet inventory (live)",
         ]}
@@ -25,12 +26,27 @@ export default function RatingsPage() {
     );
   }
 
-  const collectorScore = isOwner
+  const showScores = isOwner && hasVerifiedCollectorIdentity(identity);
+  const collectorScore = showScores
     ? identity?.statusModules.collectorScore
     : null;
-  const collectionScores = isOwner
+  const collectionScores = showScores
     ? identity?.statusModules.collectionScores
     : null;
+
+  if (!showScores) {
+    return (
+      <ProfileSection
+        title="Ratings"
+        description="Scores appear after you verify a wallet and build your Collector Identity."
+      >
+        <p className="text-sm text-muted-foreground">
+          Verify a connected wallet to unlock Collector Identity. Scoring is not
+          available yet and Collect Digital never invents placeholder scores.
+        </p>
+      </ProfileSection>
+    );
+  }
 
   return (
     <div className="space-y-6">
