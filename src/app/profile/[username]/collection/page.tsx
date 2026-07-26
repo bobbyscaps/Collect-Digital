@@ -1,115 +1,127 @@
 "use client";
 
-import { EyeOff, Filter, Layers, Search } from "lucide-react";
+import { Layers } from "lucide-react";
 
 import { useProfile } from "@/components/profile/profile-context";
 import { LockedCard } from "@/components/auth/locked-card";
-import {
-  EmptyState,
-  PlaceholderCard,
-  PrivateValue,
-  ProfileSection,
-  Stat,
-} from "@/components/profile/ui";
-import { formatEth } from "@/lib/profile/data";
+import { ProgressiveData } from "@/components/collector-identity/progressive-data";
+import { hasNoVerifiedWallets } from "@/components/collector-identity/no-verified-wallets-empty-state";
+import { EmptyState, ProfileSection, Stat } from "@/components/profile/ui";
 
 export default function CollectionPage() {
-  const { profile, isOwner, canViewFinancials, canViewCollection, viewerAuthenticated } =
+  const { isOwner, viewerAuthenticated, identity, identityLoading } =
     useProfile();
-  const { portfolio } = profile;
 
-  if (!canViewCollection) {
+  if (!viewerAuthenticated) {
+    return (
+      <LockedCard
+        title="Unlock real collection inventory"
+        description="Log in to see verified-wallet inventory summaries. Floor values, NFT galleries, and marketplace enrichment are not shown until they are backed by real data."
+        cta="Log in to view inventory"
+        items={[
+          "Collections count",
+          "Unique tokens",
+          "Inventory quantities",
+          "Latest sync status",
+        ]}
+      />
+    );
+  }
+
+  if (!isOwner || !identity) {
     return (
       <ProfileSection title="Collection">
         <EmptyState
-          icon={EyeOff}
-          title="This collection is private"
-          description="The owner has chosen to keep their collection hidden from visitors."
+          icon={Layers}
+          title={identityLoading ? "Loading inventory…" : "Inventory unavailable"}
+          description="Collection inventory is loaded from your authenticated Collector Identity. NFT gallery and marketplace enrichment are out of scope for this release."
         />
+      </ProfileSection>
+    );
+  }
+
+  // Header already shows the single no-verified-wallets empty state.
+  if (hasNoVerifiedWallets(identity)) {
+    return (
+      <ProfileSection title="Collection">
+        <p className="text-sm text-muted-foreground">
+          Collection inventory appears after you verify a wallet and sync
+          collectibles.
+        </p>
       </ProfileSection>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Stat label="NFTs Owned" value={portfolio.nftCount} />
-        <Stat label="Collections" value={portfolio.collectionCount} />
-        <Stat
-          label="Floor Value"
-          value={canViewFinancials ? formatEth(portfolio.floorValueEth) : <PrivateValue />}
-        />
-        <Stat
-          label="Best-Offer Value"
-          value={
-            canViewFinancials ? formatEth(portfolio.bestOfferValueEth) : <PrivateValue />
-          }
-        />
-        <Stat
-          label="Hidden NFTs"
-          value={isOwner ? portfolio.hiddenCount : <PrivateValue label="Owner only" />}
-        />
-      </div>
-
-      <ProfileSection
-        title="All NFTs"
-        description="Search, filter, and group across every collection this collector owns."
-      >
-        {/* Filter bar (placeholder) */}
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row">
-          <div className="flex flex-1 items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-muted-foreground">
-            <Search className="h-4 w-4" />
-            Search NFTs and collections
-          </div>
-          <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-muted-foreground">
-            <Filter className="h-4 w-4" />
-            Filters
-          </div>
-          <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-muted-foreground">
-            <Layers className="h-4 w-4" />
-            Groups
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, index) => (
-            <PlaceholderCard
-              key={index}
-              title={`NFT #${index + 1}`}
-              meta={
-                profile.favoriteCollections[index % profile.favoriteCollections.length]
+      <ProgressiveData
+        state={identity.inventory.state}
+        data={identity.inventory.data}
+        lastUpdatedAt={identity.inventory.lastUpdatedAt}
+        message={identity.inventory.message}
+        render={(data) => (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat label="Collections" value={data.totalCollections} />
+            <Stat label="Unique Tokens" value={data.uniqueTokenCount} />
+            <Stat label="Total Quantity" value={data.totalQuantity} />
+            <Stat
+              label="Inventory Status"
+              value={data.inventoryStatus}
+              hint={
+                identity.inventory.state === "stale" &&
+                identity.inventory.lastUpdatedAt
+                  ? `Last updated ${new Date(
+                      identity.inventory.lastUpdatedAt
+                    ).toLocaleString()}`
+                  : undefined
               }
             />
-          ))}
-        </div>
+          </div>
+        )}
+      />
+
+      <ProfileSection
+        title="Collection Summaries"
+        description="Summaries from verified-wallet inventory analysis. No scores or pricing."
+      >
+        <ProgressiveData
+          state={identity.collectionSummaries.state}
+          data={identity.collectionSummaries.data}
+          lastUpdatedAt={identity.collectionSummaries.lastUpdatedAt}
+          message={identity.collectionSummaries.message}
+          render={(collections) => (
+            <ul className="divide-y divide-white/5">
+              {collections.map((collection) => (
+                <li
+                  key={collection.collectionId}
+                  className="flex flex-col gap-1 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">
+                      {collection.collectionId}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {collection.chainNamespace} · {collection.contractAddress}
+                    </p>
+                  </div>
+                  <div className="text-xs text-muted-foreground sm:text-right">
+                    <p>{collection.uniqueTokenCount} unique</p>
+                    <p>qty {collection.totalQuantity}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        />
       </ProfileSection>
 
-      {!viewerAuthenticated && (
-        <LockedCard
-          title="Unlock full collection analysis"
-          description="Log in to see portfolio value, floor and best-offer valuations, holding periods, and collection-level analytics."
-          cta="Log in to view analysis"
-          items={[
-            "Portfolio value",
-            "Floor & best-offer value",
-            "Holding periods",
-            "Collection analytics",
-          ]}
+      <ProfileSection title="NFT Gallery">
+        <EmptyState
+          icon={Layers}
+          title="NFT gallery coming soon"
+          description="Per-token gallery browsing is not part of Collector Identity integration."
         />
-      )}
-
-      {isOwner && (
-        <ProfileSection
-          title="Display Controls"
-          description="Owners can control public/private display and hide individual NFTs."
-        >
-          <EmptyState
-            icon={EyeOff}
-            title="Public / private controls coming soon"
-            description="Toggle collection visibility and hide specific pieces from your public profile."
-          />
-        </ProfileSection>
-      )}
+      </ProfileSection>
     </div>
   );
 }

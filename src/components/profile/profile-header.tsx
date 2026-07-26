@@ -3,20 +3,23 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  BadgeCheck,
-  Coins,
-  Gauge,
-  Image as ImageIcon,
+  Boxes,
+  Clock3,
+  Layers,
   Pencil,
   ShieldCheck,
-  TrendingUp,
-  Users,
+  Wallet,
   UserPlus,
   UserCheck,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useGatedLogin } from "@/components/auth/gated-login";
+import { ProgressiveData } from "@/components/collector-identity/progressive-data";
+import {
+  hasNoVerifiedWallets,
+  NoVerifiedWalletsEmptyState,
+} from "@/components/collector-identity/no-verified-wallets-empty-state";
 import { useProfile } from "./profile-context";
 
 function HeaderStat({
@@ -24,7 +27,7 @@ function HeaderStat({
   label,
   value,
 }: {
-  icon: typeof Gauge;
+  icon: typeof Wallet;
   label: string;
   value: React.ReactNode;
 }) {
@@ -43,8 +46,25 @@ function HeaderStat({
   );
 }
 
+function formatSync(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
 export function ProfileHeader() {
-  const { profile, isOwner, viewerAuthenticated } = useProfile();
+  const {
+    view,
+    isOwner,
+    viewerAuthenticated,
+    identity,
+    identityLoading,
+    identityError,
+  } = useProfile();
   const { requireLogin } = useGatedLogin();
   const [following, setFollowing] = useState(false);
 
@@ -53,8 +73,17 @@ export function ProfileHeader() {
       requireLogin();
       return;
     }
+    // Follow graph is not implemented — do not invent follower counts.
     setFollowing((prev) => !prev);
   };
+
+  const identityData = identity?.identity.data;
+  const avatarUrl = identityData?.avatarUrl ?? null;
+  const bio = identityData?.bio?.trim() || null;
+  const verifiedCount = identity?.wallets.data?.verifiedWalletCount ?? null;
+  const hasVerifiedWallet =
+    typeof verifiedCount === "number" ? verifiedCount > 0 : false;
+  const noVerifiedWallets = hasNoVerifiedWallets(identity);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
@@ -67,22 +96,26 @@ export function ProfileHeader() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex items-end gap-4">
             {/* Avatar */}
-            <div className="-mt-12 flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 via-indigo-500 to-sky-400 text-2xl font-bold text-white shadow-xl shadow-indigo-500/30 ring-4 ring-background sm:-mt-14 sm:h-28 sm:w-28">
-              {profile.initials}
+            <div className="relative -mt-12 h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 via-indigo-500 to-sky-400 text-2xl font-bold text-white shadow-xl shadow-indigo-500/30 ring-4 ring-background sm:-mt-14 sm:h-28 sm:w-28">
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- optional remote avatar URLs are not in next/image remotePatterns
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  {view.initials}
+                </div>
+              )}
             </div>
             <div className="pb-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl font-semibold tracking-tight">
-                  {profile.displayName}
+                  {identityData?.displayName?.trim() || view.displayLabel}
                 </h1>
-                <span
-                  className="inline-flex items-center gap-1 rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2 py-0.5 text-xs font-medium text-indigo-300"
-                  title="Main badge"
-                >
-                  <BadgeCheck className="h-3.5 w-3.5" />
-                  {profile.mainBadge}
-                </span>
-                {profile.walletVerified && (
+                {hasVerifiedWallet && (
                   <span
                     className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-300"
                     title="Verified wallet"
@@ -92,15 +125,19 @@ export function ProfileHeader() {
                   </span>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground">@{profile.username}</p>
+              <p className="text-sm text-muted-foreground">@{view.username}</p>
             </div>
           </div>
 
           {/* Actions */}
           <div className="flex items-center gap-2">
             {isOwner ? (
-              <Button asChild variant="outline" className="border-white/15 bg-white/5 hover:bg-white/10">
-                <Link href={`/profile/${profile.username}/settings`}>
+              <Button
+                asChild
+                variant="outline"
+                className="border-white/15 bg-white/5 hover:bg-white/10"
+              >
+                <Link href={`/profile/${view.username}/settings`}>
                   <Pencil />
                   Edit Profile
                 </Link>
@@ -108,7 +145,9 @@ export function ProfileHeader() {
             ) : (
               <Button
                 variant={following ? "outline" : "default"}
-                className={following ? "border-white/15 bg-white/5 hover:bg-white/10" : ""}
+                className={
+                  following ? "border-white/15 bg-white/5 hover:bg-white/10" : ""
+                }
                 onClick={handleFollow}
               >
                 {following ? <UserCheck /> : <UserPlus />}
@@ -118,48 +157,118 @@ export function ProfileHeader() {
           </div>
         </div>
 
-        {/* Bio summary */}
-        <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          {profile.bioSummary}
-        </p>
+        {/* Bio — only when real */}
+        {bio ? (
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            {bio}
+          </p>
+        ) : (
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            {isOwner
+              ? identityLoading
+                ? "Loading Collector Identity…"
+                : "No bio yet."
+              : viewerAuthenticated
+                ? "Collector Identity details are available on your own profile."
+                : "Log in to load your Collector Identity."}
+          </p>
+        )}
 
-        {/* Public counts */}
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          <span>
-            <span className="font-semibold">{profile.followers.toLocaleString()}</span>{" "}
-            <span className="text-muted-foreground">Followers</span>
-          </span>
-          <span>
-            <span className="font-semibold">{profile.following.toLocaleString()}</span>{" "}
-            <span className="text-muted-foreground">Following</span>
-          </span>
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <ImageIcon className="h-3.5 w-3.5" />
-            {profile.publicNftCount} shown
-          </span>
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <Users className="h-3.5 w-3.5" />
-            {profile.communitiesCount} communities
-          </span>
+        {/* Public social counts intentionally omitted — not backed by real data. */}
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <span>Followers · Coming Soon</span>
+          <span>Following · Coming Soon</span>
+          <span>Communities · Coming Soon</span>
         </div>
 
-        {/* Key stats */}
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <HeaderStat icon={Gauge} label="Collector Score" value={profile.collectorScore} />
-          <HeaderStat icon={TrendingUp} label="Flipper Score" value={profile.flipperScore} />
-          <HeaderStat icon={BadgeCheck} label="Main Badge" value={profile.mainBadge} />
+        {/* Key stats — real inventory / wallet signals only */}
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           <HeaderStat
-            icon={Coins}
-            label="Collect Points"
-            value={profile.collectPoints.toLocaleString()}
+            icon={Wallet}
+            label="Verified Wallets"
+            value={
+              identityLoading
+                ? "…"
+                : verifiedCount != null
+                  ? verifiedCount
+                  : isOwner
+                    ? "—"
+                    : "—"
+            }
+          />
+          <HeaderStat
+            icon={Layers}
+            label="Collections"
+            value={
+              identityLoading
+                ? "…"
+                : (identity?.inventory.data?.totalCollections ?? "—")
+            }
+          />
+          <HeaderStat
+            icon={Boxes}
+            label="Unique Tokens"
+            value={
+              identityLoading
+                ? "…"
+                : (identity?.inventory.data?.uniqueTokenCount ?? "—")
+            }
+          />
+          <HeaderStat
+            icon={ShieldCheck}
+            label="Inventory Status"
+            value={
+              identityLoading
+                ? "…"
+                : identity?.inventory.state === "stale"
+                  ? "Stale"
+                  : (identity?.inventory.data?.inventoryStatus ?? "—")
+            }
+          />
+          <HeaderStat
+            icon={Clock3}
+            label="Latest Sync"
+            value={
+              identityLoading
+                ? "…"
+                : formatSync(
+                    identity?.inventory.lastUpdatedAt ??
+                      identity?.wallets.data?.latestSuccessfulSync
+                  )
+            }
           />
         </div>
 
-        <p className="mt-3 text-xs text-muted-foreground">
-          {profile.ratingSource === "onchain"
-            ? "Collector rating derived from on-chain activity."
-            : "Collector rating based on sample data."}
-        </p>
+        {isOwner && (
+          <div className="mt-4 space-y-3">
+            {identityError && (
+              <p className="text-xs text-rose-200/90">{identityError}</p>
+            )}
+            {noVerifiedWallets ? (
+              <NoVerifiedWalletsEmptyState />
+            ) : (
+              identity &&
+              identity.inventory.state !== "live" &&
+              identity.inventory.state !== "loading" &&
+              identity.inventory.state !== "empty" && (
+                <ProgressiveData
+                  state={identity.inventory.state}
+                  data={identity.inventory.data}
+                  lastUpdatedAt={identity.inventory.lastUpdatedAt}
+                  message={identity.inventory.message}
+                />
+              )
+            )}
+          </div>
+        )}
+
+        {!isOwner && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Live Collector Identity metrics are shown for your authenticated
+            profile only. Unsupported modules display Coming Soon — never sample
+            scores.
+          </p>
+        )}
       </div>
     </div>
   );

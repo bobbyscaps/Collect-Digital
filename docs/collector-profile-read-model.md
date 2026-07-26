@@ -123,5 +123,6 @@ Do not implement these in PR7.
 
 ## Out of scope
 
-PR8 and later may add scoring, identity enrichment, and UI wiring. This PR stops
-at the read-model composition layer.
+PR8 wires this read model into the authenticated Collector Identity API and UI.
+Scoring, marketplace enrichment, and NFT gallery remain out of scope for PR7
+and PR8. This PR stops at the read-model composition layer.

@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:multichain-foundation": "tsx --test src/lib/chains/*.test.ts src/lib/providers/*.test.ts src/lib/scoring/*.test.ts src/lib/profile-wallets/*.test.ts src/lib/wallet-verification/*.test.ts src/lib/wallet-inventory/*.test.ts src/lib/collector-analysis/*.test.ts src/lib/collector-profile/*.test.ts"
+    "test:multichain-foundation": "tsx --test src/lib/chains/*.test.ts src/lib/providers/*.test.ts src/lib/scoring/*.test.ts src/lib/profile-wallets/*.test.ts src/lib/wallet-verification/*.test.ts src/lib/wallet-inventory/*.test.ts src/lib/collector-analysis/*.test.ts src/lib/collector-profile/*.test.ts src/lib/collector-identity/*.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

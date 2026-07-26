@@ -25,9 +25,9 @@ const TABS: TabDef[] = [
 ];
 
 export function ProfileTabs() {
-  const { profile, isOwner } = useProfile();
+  const { view, isOwner } = useProfile();
   const pathname = usePathname();
-  const base = `/profile/${profile.username}`;
+  const base = `/profile/${view.username}`;
 
   const visibleTabs = TABS.filter((tab) => !tab.ownerOnly || isOwner);
 

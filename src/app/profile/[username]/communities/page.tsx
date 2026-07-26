@@ -1,83 +1,47 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { Users } from "lucide-react";
 
+import { useProfile } from "@/components/profile/profile-context";
+import { ProgressiveData } from "@/components/collector-identity/progressive-data";
 import { ProfileSection } from "@/components/profile/ui";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-
-type CommunityRow = {
-  name: string;
-  projectScore: number;
-  communityScore: number;
-  role: string;
-  activity: string;
-  initials: string;
-};
-
-const COMMUNITIES: CommunityRow[] = [
-  {
-    name: "Bored Ape Yacht Club",
-    projectScore: 92,
-    communityScore: 88,
-    role: "Holder",
-    activity: "12 new posts today",
-    initials: "BA",
-  },
-  {
-    name: "Pudgy Penguins",
-    projectScore: 90,
-    communityScore: 94,
-    role: "Moderator",
-    activity: "Event starts in 2 days",
-    initials: "PP",
-  },
-  {
-    name: "VeeFriends",
-    projectScore: 84,
-    communityScore: 80,
-    role: "Holder",
-    activity: "New wiki revision",
-    initials: "VF",
-  },
-];
 
 export default function CommunitiesPage() {
+  const { identity, isOwner, viewerAuthenticated } = useProfile();
+
+  const section =
+    isOwner && identity
+      ? identity.statusModules.communities
+      : {
+          state: "coming_soon" as const,
+          data: null,
+          lastUpdatedAt: null,
+          message: viewerAuthenticated
+            ? "Communities coming soon"
+            : "Communities coming soon — log in for Collector Identity.",
+        };
+
   return (
     <ProfileSection
       title="Token-Gated Communities"
-      description="Communities this collector belongs to, unlocked automatically by their wallet."
+      description="Communities are a dynamic status module. They are not implemented yet — never populated with sample rows."
     >
-      <div className="space-y-3">
-        {COMMUNITIES.map((community) => (
-          <Card key={community.name} className="border-white/10 bg-white/[0.03]">
-            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 via-indigo-500 to-sky-400 text-sm font-bold text-white">
-                  {community.initials}
-                </span>
-                <div>
-                  <p className="font-medium">{community.name}</p>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <span>Project score {community.projectScore}</span>
-                    <span>Community score {community.communityScore}</span>
-                    <span className="text-indigo-300">{community.role}</span>
-                    <span>{community.activity}</span>
-                  </div>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="shrink-0 border-white/15 bg-white/5 hover:bg-white/10"
-              >
-                Enter Community
-                <ArrowRight />
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <ProgressiveData
+        state={section.state}
+        data={section.data}
+        message={section.message}
+        comingSoon={
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/12 bg-white/[0.02] px-6 py-12 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-violet-500/20 to-sky-400/20 text-indigo-300 ring-1 ring-inset ring-white/10">
+              <Users className="h-5 w-5" />
+            </span>
+            <p className="mt-4 text-sm font-medium">Coming Soon</p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              Token-gated communities will appear here from real membership data.
+            </p>
+          </div>
+        }
+      />
     </ProfileSection>
   );
 }
