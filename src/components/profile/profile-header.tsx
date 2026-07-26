@@ -16,10 +16,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { useGatedLogin } from "@/components/auth/gated-login";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
-import {
-  hasNoVerifiedWallets,
-  NoVerifiedWalletsEmptyState,
-} from "@/components/collector-identity/no-verified-wallets-empty-state";
+import { hasNoVerifiedWallets } from "@/components/collector-identity/no-verified-wallets";
+import { NoVerifiedWalletsEmptyState } from "@/components/collector-identity/no-verified-wallets-empty-state";
 import { useProfile } from "./profile-context";
 
 function HeaderStat({
@@ -64,9 +62,12 @@ export function ProfileHeader() {
     identity,
     identityLoading,
     identityError,
+    refreshIdentity,
   } = useProfile();
   const { requireLogin } = useGatedLogin();
   const [following, setFollowing] = useState(false);
+  const [verificationSessionActive, setVerificationSessionActive] =
+    useState(false);
 
   const handleFollow = () => {
     if (!viewerAuthenticated) {
@@ -244,9 +245,14 @@ export function ProfileHeader() {
             {identityError && (
               <p className="text-xs text-rose-200/90">{identityError}</p>
             )}
-            {noVerifiedWallets ? (
-              <NoVerifiedWalletsEmptyState />
-            ) : (
+            {(noVerifiedWallets || verificationSessionActive) && (
+              <NoVerifiedWalletsEmptyState
+                onIdentityRefresh={refreshIdentity}
+                onSessionActiveChange={setVerificationSessionActive}
+              />
+            )}
+            {!noVerifiedWallets &&
+              !verificationSessionActive &&
               identity &&
               identity.inventory.state !== "live" &&
               identity.inventory.state !== "loading" &&
@@ -257,8 +263,7 @@ export function ProfileHeader() {
                   lastUpdatedAt={identity.inventory.lastUpdatedAt}
                   message={identity.inventory.message}
                 />
-              )
-            )}
+              )}
           </div>
         )}
 

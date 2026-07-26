@@ -5,7 +5,7 @@ import { Layers } from "lucide-react";
 import { useProfile } from "@/components/profile/profile-context";
 import { LockedCard } from "@/components/auth/locked-card";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
-import { hasNoVerifiedWallets } from "@/components/collector-identity/no-verified-wallets-empty-state";
+import { hasNoVerifiedWallets } from "@/components/collector-identity/no-verified-wallets";
 import { EmptyState, ProfileSection, Stat } from "@/components/profile/ui";
 
 export default function CollectionPage() {

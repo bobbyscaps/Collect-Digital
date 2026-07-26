@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:multichain-foundation": "tsx --test src/lib/chains/*.test.ts src/lib/providers/*.test.ts src/lib/scoring/*.test.ts src/lib/profile-wallets/*.test.ts src/lib/wallet-verification/*.test.ts src/lib/wallet-inventory/*.test.ts src/lib/collector-analysis/*.test.ts src/lib/collector-profile/*.test.ts src/lib/collector-identity/*.test.ts"
+    "test:multichain-foundation": "tsx --test src/lib/chains/*.test.ts src/lib/providers/*.test.ts src/lib/scoring/*.test.ts src/lib/profile-wallets/*.test.ts src/lib/wallet-verification/*.test.ts src/lib/wallet-inventory/*.test.ts src/lib/collector-analysis/*.test.ts src/lib/collector-profile/*.test.ts src/lib/collector-identity/*.test.ts src/lib/wallet-verification-flow/*.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -17,6 +17,10 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@privy-io/react-auth": "^3.34.0",
     "@radix-ui/react-slot": "^1.3.0",
+    "@solana-program/memo": "^0.10.0",
+    "@solana-program/system": "^0.10.0",
+    "@solana-program/token": "^0.8.0",
+    "@solana/kit": "^5.5.1",
     "@supabase/supabase-js": "^2.110.2",
     "bs58": "^6.0.0",
     "class-variance-authority": "^0.7.1",

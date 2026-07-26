@@ -15,12 +15,15 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         appearance: {
           theme: "dark",
           accentColor: "#6366f1",
-          walletChainType: "ethereum-only",
+          walletChainType: "ethereum-and-solana",
         },
         loginMethods: ["wallet", "twitter", "google", "apple"],
         embeddedWallets: {
           ethereum: {
             createOnLogin: "users-without-wallets",
+          },
+          solana: {
+            createOnLogin: "off",
           },
         },
       }}

@@ -4,7 +4,7 @@ import { Award, Wallet } from "lucide-react";
 
 import { useProfile } from "@/components/profile/profile-context";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
-import { hasNoVerifiedWallets } from "@/components/collector-identity/no-verified-wallets-empty-state";
+import { hasNoVerifiedWallets } from "@/components/collector-identity/no-verified-wallets";
 import { ProfileSection } from "@/components/profile/ui";
 import { LockedCard } from "@/components/auth/locked-card";
 

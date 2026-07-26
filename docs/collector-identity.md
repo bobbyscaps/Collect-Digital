@@ -141,7 +141,12 @@ NFT gallery, marketplace enrichment) display **Coming Soon**.
 
 Search remains unchanged and is out of scope for this identity integration.
 
-## Out of scope (do not begin PR9)
+## Related: PR9 wallet verification flow
+
+Wallet registration, ownership verification, and first inventory sync are
+documented in `docs/wallet-registration-verification-sync.md`.
+
+## Out of scope (do not begin PR10)
 
 - Collector Scores / Collection Scores implementation
 - Marketplace enrichment
