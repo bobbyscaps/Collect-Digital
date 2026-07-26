@@ -101,6 +101,7 @@ test("repository contract exposes required inventory methods", () => {
   assert.equal(typeof repository.completeSync, "function");
   assert.equal(typeof repository.findLatestSync, "function");
   assert.equal(typeof repository.findLatestSuccessfulSync, "function");
+  assert.equal(typeof repository.findLatestSuccessfulSyncs, "function");
   assert.equal(typeof repository.updateSyncStatus, "function");
 });
 

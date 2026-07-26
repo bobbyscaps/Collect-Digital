@@ -75,17 +75,18 @@ export function createCollectorAnalysisService(
 
       const collections = aggregateCollections(holdings);
 
-      const walletFreshness: WalletInventoryFreshness[] = await Promise.all(
-        walletIds.map(async (walletId) => {
-          const sync =
-            await options.inventory.findLatestSuccessfulSync(walletId);
+      const latestSuccessfulSyncs =
+        await options.inventory.findLatestSuccessfulSyncs(walletIds);
+      const walletFreshness: WalletInventoryFreshness[] = walletIds.map(
+        (walletId) => {
+          const sync = latestSuccessfulSyncs.get(walletId) ?? null;
           return Object.freeze({
             walletId,
             lastSuccessfulSyncAt: sync
               ? (sync.syncCompletedAt ?? sync.syncStartedAt)
               : null,
           });
-        })
+        }
       );
 
       const lastInventorySync = resolveLastInventorySync(

@@ -120,6 +120,8 @@ Output does not depend on DB row order, provider order, or insertion order.
 - `listHoldingsByWallets(walletIds)`
 - `listHoldingsByCollection(collectionId)`
 - `findLatestSuccessfulSync(walletId)`
+- `findLatestSuccessfulSyncs(walletIds)` — batched successful-sync lookup used by
+  analysis / profile composition to avoid N+1 repository calls
 
 No analysis path writes holdings, triggers sync, calls providers, or persists
 scores/derived summaries. Normalized inventory remains the source of truth.

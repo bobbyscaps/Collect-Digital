@@ -86,6 +86,14 @@ export interface WalletInventoryRepository {
   findLatestSuccessfulSync(
     walletId: string
   ): Promise<WalletInventorySync | null>;
+  /**
+   * Read-only: batched latest successful syncs for many wallets.
+   * Returns one entry per requested walletId (null when none succeeded).
+   * Prefer this over N× findLatestSuccessfulSync for profile/analysis composition.
+   */
+  findLatestSuccessfulSyncs(
+    walletIds: readonly string[]
+  ): Promise<ReadonlyMap<string, WalletInventorySync | null>>;
   updateSyncStatus(
     syncId: string,
     syncStatus: WalletInventorySyncStatus,
@@ -429,6 +437,17 @@ export function createInMemoryWalletInventoryRepository(): WalletInventoryReposi
       }
 
       return latest ? freezeSync(latest) : null;
+    },
+
+    async findLatestSuccessfulSyncs(
+      walletIds: readonly string[]
+    ): Promise<ReadonlyMap<string, WalletInventorySync | null>> {
+      const result = new Map<string, WalletInventorySync | null>();
+      const uniqueIds = Array.from(new Set(walletIds));
+      for (const walletId of uniqueIds) {
+        result.set(walletId, await this.findLatestSuccessfulSync(walletId));
+      }
+      return result;
     },
 
     async updateSyncStatus(
