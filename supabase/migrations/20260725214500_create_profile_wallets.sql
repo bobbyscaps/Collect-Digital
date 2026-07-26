@@ -1,11 +1,12 @@
 -- PR3: Chain-Aware Verified Wallet Registry
 -- Persistence model only. No runtime auth/score behavior changes.
+-- profile_id references Collect Digital profiles(id), not auth.users.
 
 create extension if not exists pgcrypto;
 
 create table if not exists public.profile_wallets (
   id uuid primary key default gen_random_uuid(),
-  profile_id uuid not null references auth.users(id) on delete cascade,
+  profile_id uuid not null references public.profiles(id) on delete cascade,
   chain_namespace text not null check (chain_namespace in ('eip155', 'solana')),
   address text not null,
   normalized_address text not null,

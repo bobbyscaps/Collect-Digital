@@ -1,4 +1,5 @@
 -- PR4 security: atomic challenge consume + wallet verify (single transaction).
+-- p_profile_id is the internal Collect Digital profiles.id UUID.
 
 create or replace function public.complete_wallet_ownership_verification(
   p_challenge_id uuid,
@@ -78,5 +79,7 @@ $$;
 
 revoke all on function public.complete_wallet_ownership_verification(uuid, uuid, uuid, timestamptz)
   from public;
+revoke all on function public.complete_wallet_ownership_verification(uuid, uuid, uuid, timestamptz)
+  from anon, authenticated;
 grant execute on function public.complete_wallet_ownership_verification(uuid, uuid, uuid, timestamptz)
   to service_role;

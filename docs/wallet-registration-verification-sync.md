@@ -107,6 +107,29 @@ Real metrics that begin appearing:
 - Background job systems
 - PR10 work
 
+## Identity model (Privy → internal UUID)
+
+Collect Digital does **not** store Privy DIDs as foreign keys.
+
+```
+Privy authenticated user (JWT sub, e.g. did:privy:…)
+        ↓
+profiles identity mapping  (privy_user_id → id uuid)
+        ↓
+internal Collect Digital profile UUID
+        ↓
+wallets, challenges, inventory, future product data
+```
+
+- `requireAuthenticatedProfile` verifies the Privy Bearer token, then calls
+  `resolveOrCreateProfileForPrivyUser` once.
+- First login inserts a `profiles` row; concurrent first-logins converge via
+  `unique (privy_user_id)`.
+- `AuthenticatedProfileContext.profileId` is always `profiles.id` (UUID).
+- Client-supplied profile IDs are never trusted.
+
+Supabase Auth (`auth.users`) is not used. Supabase is persistence only.
+
 ## Canonical signing (exact server message)
 
 1. Client calls `POST /api/wallets/verification/challenge`.

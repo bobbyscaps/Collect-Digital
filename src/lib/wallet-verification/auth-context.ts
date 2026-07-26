@@ -3,11 +3,14 @@ import { WalletProfileMismatchError } from "@/lib/wallet-verification/domain";
 /**
  * Trusted authentication context for wallet verification.
  *
- * HTTP handlers must construct this only from verified server-side auth
- * (e.g. Privy/JWT subject mapped to the Collect Digital profile). Never build
- * this object from an untrusted client-supplied profileId alone.
+ * HTTP handlers must construct this only from verified server-side auth:
+ * Privy JWT subject → profiles mapping → internal Collect Digital UUID.
+ *
+ * `profileId` is always the internal UUID (`profiles.id`), never the Privy DID.
+ * Never build this object from an untrusted client-supplied profileId alone.
  */
 export interface AuthenticatedProfileContext {
+  /** Internal Collect Digital profile UUID (`profiles.id`). */
   readonly profileId: string;
 }
 

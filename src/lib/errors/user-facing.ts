@@ -20,6 +20,7 @@ export function isInfrastructureErrorMessage(message: string): boolean {
     lower.includes("service role") ||
     lower.includes("repository") ||
     lower.includes("profilewallet") ||
+    lower.includes("profilerepository") ||
     lower.includes("walletinventory") ||
     lower.includes("walletverification") ||
     lower.includes("env.") ||

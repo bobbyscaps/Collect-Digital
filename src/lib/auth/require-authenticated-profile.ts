@@ -3,43 +3,52 @@ import {
   createAuthenticatedProfileContext,
   type AuthenticatedProfileContext,
 } from "@/lib/wallet-verification/auth-context";
+import { resolveOrCreateProfileForPrivyUser } from "@/lib/profiles/resolve-profile";
+import type { ProfileRepository } from "@/lib/profiles/repository";
+import {
+  USER_FACING_SERVICE_UNAVAILABLE,
+  isInfrastructureErrorMessage,
+  logTechnicalError,
+} from "@/lib/errors/user-facing";
 
-/**
- * Maps a verified Privy subject to the Collect Digital profileId.
- *
- * The trusted JWT `sub` is the only source of profile identity for authenticated
- * routes. Client-supplied profile IDs are never accepted.
- *
- * Until a dedicated Privy↔profile mapping table exists, the verified subject is
- * used directly as the profile key (same contract as AuthenticatedProfileContext).
- */
-export function resolveProfileIdFromPrivyUserId(privyUserId: string): string {
-  const trimmed = privyUserId.trim();
-  if (!trimmed) {
-    throw new Error("Privy user id is required to resolve profileId.");
-  }
-  return trimmed;
-}
+/** Re-export the canonical Privy → internal UUID resolver. */
+export { resolveProfileIdFromPrivyUserId } from "@/lib/profiles/resolve-profile";
 
 export type AuthenticatedProfileResult =
   | {
       ok: true;
+      /** External Privy JWT subject (did:privy:...). Never a DB foreign key. */
       privyUserId: string;
+      /** Trusted context whose profileId is the internal Collect Digital UUID. */
       auth: AuthenticatedProfileContext;
     }
   | {
       ok: false;
       status: number;
       message: string;
-      code: "authentication_required" | "invalid_token";
+      code:
+        | "authentication_required"
+        | "invalid_token"
+        | "service_unavailable"
+        | "internal_error";
     };
+
+export type RequireAuthenticatedProfileOptions = {
+  /** Injectable profile repository for tests. Defaults to Supabase. */
+  profiles?: ProfileRepository;
+};
 
 /**
  * Verifies the Bearer Privy access token and builds a trusted profile context.
- * Never reads profileId from query/body/path.
+ *
+ * Flow:
+ *   Privy JWT sub → profiles mapping → internal UUID → AuthenticatedProfileContext
+ *
+ * Never reads profileId from query/body/path. Client-supplied profile IDs are ignored.
  */
 export async function requireAuthenticatedProfile(
-  request: Request
+  request: Request,
+  options: RequireAuthenticatedProfileOptions = {}
 ): Promise<AuthenticatedProfileResult> {
   const header = request.headers.get("authorization");
   const token = header?.startsWith("Bearer ") ? header.slice(7).trim() : null;
@@ -63,10 +72,33 @@ export async function requireAuthenticatedProfile(
     };
   }
 
-  const profileId = resolveProfileIdFromPrivyUserId(privyUserId);
-  return {
-    ok: true,
-    privyUserId,
-    auth: createAuthenticatedProfileContext(profileId),
-  };
+  try {
+    const profile = await resolveOrCreateProfileForPrivyUser(
+      privyUserId,
+      options.profiles
+    );
+    return {
+      ok: true,
+      privyUserId,
+      auth: createAuthenticatedProfileContext(profile.id),
+    };
+  } catch (cause) {
+    logTechnicalError("requireAuthenticatedProfile profile resolution", cause);
+    const technical =
+      cause instanceof Error ? cause.message : "Profile resolution failed.";
+    if (isInfrastructureErrorMessage(technical)) {
+      return {
+        ok: false,
+        status: 503,
+        message: USER_FACING_SERVICE_UNAVAILABLE,
+        code: "service_unavailable",
+      };
+    }
+    return {
+      ok: false,
+      status: 500,
+      message: "Unable to resolve collector profile.",
+      code: "internal_error",
+    };
+  }
 }

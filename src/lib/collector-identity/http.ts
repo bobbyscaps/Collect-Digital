@@ -31,8 +31,9 @@ function errorResponse(
 /**
  * Testable handler for GET /api/collector-identity/me.
  *
- * profileId is derived only from the verified Privy access token — never from
- * client-supplied identifiers. Repositories and provider models are never exposed.
+ * profileId is the internal Collect Digital UUID resolved from the verified
+ * Privy JWT subject via the profiles mapping — never a client-supplied ID and
+ * never the raw Privy DID as a foreign key. Repositories are never exposed.
  */
 export async function handleGetCollectorIdentityMe(
   request: Request,

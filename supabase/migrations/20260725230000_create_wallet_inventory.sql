@@ -64,6 +64,7 @@ create or replace function public.replace_wallet_inventory(
 returns jsonb
 language plpgsql
 security definer
+set search_path = public
 as $$
 declare
   holding jsonb;
@@ -178,3 +179,11 @@ begin
   );
 end;
 $$;
+
+-- Privileged server-only execution (matches complete_wallet_ownership_verification).
+revoke all on function public.replace_wallet_inventory(uuid, jsonb)
+  from public;
+revoke all on function public.replace_wallet_inventory(uuid, jsonb)
+  from anon, authenticated;
+grant execute on function public.replace_wallet_inventory(uuid, jsonb)
+  to service_role;
