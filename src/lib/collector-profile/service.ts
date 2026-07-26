@@ -2,9 +2,11 @@ import { selectVerifiedConnectedWallets } from "@/lib/collector-analysis/aggrega
 import type { CollectorInventoryAnalysis } from "@/lib/collector-analysis/domain";
 import type { CollectorAnalysisService } from "@/lib/collector-analysis/service";
 import {
+  COLLECTOR_PROFILE_SCHEMA_VERSION,
   InventoryUnavailableError,
   NoVerifiedWalletsError,
   CollectorProfileNotFoundError,
+  resolveInventoryStatus,
   type CollectorProfile,
   type CollectorProfileCollectionSummary,
 } from "@/lib/collector-profile/domain";
@@ -17,7 +19,8 @@ export interface GetCollectorProfileRequest {
 
 /**
  * Read-only service that composes a collector profile from existing domain
- * services. Does not sync wallets, call providers, or calculate scores.
+ * services. Assembles — does not analyze. Does not sync wallets, call
+ * providers, or calculate scores.
  */
 export interface CollectorProfileService {
   getCollectorProfile(
@@ -27,13 +30,32 @@ export interface CollectorProfileService {
 
 export interface CreateCollectorProfileServiceOptions {
   profileWallets: ProfileWalletRepository;
+  /**
+   * Inventory repository used by CollectorAnalysisService.
+   * Required so profile composition is wired through the same batched read
+   * contract; the profile service does not issue a second holdings/sync pass.
+   */
   inventory: WalletInventoryRepository;
   analysis: CollectorAnalysisService;
+}
+
+function assertBatchedInventoryContract(
+  inventory: WalletInventoryRepository
+): void {
+  if (
+    typeof inventory.listHoldingsByWallets !== "function" ||
+    typeof inventory.findLatestSuccessfulSyncs !== "function"
+  ) {
+    throw new Error(
+      "WalletInventoryRepository must expose batched reads for profile composition"
+    );
+  }
 }
 
 function toCollectionSummaries(
   analysis: CollectorInventoryAnalysis
 ): readonly CollectorProfileCollectionSummary[] {
+  // Analysis already sorts collections by collectionId deterministically.
   return Object.freeze(
     analysis.collections.map((collection) =>
       Object.freeze({
@@ -48,13 +70,19 @@ function toCollectionSummaries(
   );
 }
 
+/**
+ * Assembles a CollectorProfile from analysis output.
+ * Does not recalculate counts, chain distribution, duplicates, or summaries.
+ */
 function composeProfile(
   analysis: CollectorInventoryAnalysis
 ): CollectorProfile {
+  const walletFreshness = analysis.summary.walletFreshness;
   return Object.freeze({
+    schemaVersion: COLLECTOR_PROFILE_SCHEMA_VERSION,
     identity: Object.freeze({
       profileId: analysis.profileId,
-      // Identity enrichment is out of scope for PR7; fields remain nullable.
+      // Identity enrichment is out of scope for PR7; keys are always present.
       displayName: null,
       avatarUrl: null,
       bio: null,
@@ -64,8 +92,10 @@ function composeProfile(
       walletCount: analysis.verifiedWallets.length,
       chainDistribution: analysis.summary.chainDistribution,
       latestSuccessfulSync: analysis.summary.lastInventorySync,
+      walletFreshness,
     }),
     inventorySummary: Object.freeze({
+      inventoryStatus: resolveInventoryStatus(walletFreshness),
       totalCollections: analysis.summary.totalCollections,
       uniqueTokenCount: analysis.summary.uniqueTokenCount,
       totalQuantity: analysis.summary.totalQuantity,
@@ -78,16 +108,21 @@ function composeProfile(
 export function createCollectorProfileService(
   options: CreateCollectorProfileServiceOptions
 ): CollectorProfileService {
+  assertBatchedInventoryContract(options.inventory);
+
   return {
     /**
      * Assembles a profile-ready read model for a collector.
      *
-     * Read-only composition path:
-     * 1. Wallet registry — existence + verified-wallet eligibility
-     * 2. CollectorAnalysisService — inventory + collection aggregates
-     *    (which reads Wallet Inventory Repository with batched lookups)
+     * Repository call sequence (bounded; not linear in wallet count):
+     * 1. `profileWallets.listWalletsByProfile(profileId)` — existence / eligibility
+     * 2. Inside `analysis.analyzeCollectorInventory`:
+     *    a. `profileWallets.listWalletsByProfile(profileId)` — verified set
+     *    b. `inventory.listHoldingsByWallets(walletIds)` — one batched holdings read
+     *    c. `inventory.findLatestSuccessfulSyncs(walletIds)` — one batched sync read
      *
      * Never performs blockchain calls, wallet sync, or score calculation.
+     * Partial sync (some wallets never synced) still returns available data.
      */
     async getCollectorProfile(
       request: GetCollectorProfileRequest
@@ -104,20 +139,11 @@ export function createCollectorProfileService(
         throw new CollectorProfileNotFoundError(profileId);
       }
 
+      // Eligibility orchestration only — reuses analysis helper, does not
+      // recalculate inventory aggregates.
       const verifiedWallets = selectVerifiedConnectedWallets(wallets);
       if (verifiedWallets.length === 0) {
         throw new NoVerifiedWalletsError(profileId);
-      }
-
-      // Batched inventory probe (no N+1). Analysis then composes holdings +
-      // aggregates via the same repository contract; profile does not re-fetch
-      // holdings or re-implement aggregation.
-      try {
-        await options.inventory.findLatestSuccessfulSyncs(
-          verifiedWallets.map((wallet) => wallet.id)
-        );
-      } catch (cause) {
-        throw new InventoryUnavailableError(profileId, cause);
       }
 
       let analysis: CollectorInventoryAnalysis;
@@ -133,6 +159,7 @@ export function createCollectorProfileService(
         ) {
           throw cause;
         }
+        // Reserved for cases where no usable inventory can be loaded at all.
         throw new InventoryUnavailableError(profileId, cause);
       }
 

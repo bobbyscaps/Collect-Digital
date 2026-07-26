@@ -5,9 +5,11 @@ import test from "node:test";
 
 import { createCollectorAnalysisService } from "@/lib/collector-analysis/service";
 import {
+  COLLECTOR_PROFILE_SCHEMA_VERSION,
   InventoryUnavailableError,
   NoVerifiedWalletsError,
   CollectorProfileNotFoundError,
+  resolveInventoryStatus,
   type CollectorProfile,
 } from "@/lib/collector-profile/domain";
 import {
@@ -103,13 +105,20 @@ function assertDomainOnlyProfile(profile: CollectorProfile) {
     );
   }
 
+  assert.equal(profile.schemaVersion, COLLECTOR_PROFILE_SCHEMA_VERSION);
   assert.equal(typeof profile.identity.profileId, "string");
-  assert.equal(profile.identity.displayName, null);
-  assert.equal(profile.identity.avatarUrl, null);
-  assert.equal(profile.identity.bio, null);
+  assert.equal("displayName" in profile.identity, true);
+  assert.equal("avatarUrl" in profile.identity, true);
+  assert.equal("bio" in profile.identity, true);
   assert.ok(Array.isArray(profile.walletSummary.verifiedWallets));
+  assert.ok(Array.isArray(profile.walletSummary.walletFreshness));
   assert.ok(Array.isArray(profile.collectionSummaries));
   assert.equal(typeof profile.inventorySummary.totalQuantity, "string");
+  assert.ok(
+    ["ready", "partial", "unsynced"].includes(
+      profile.inventorySummary.inventoryStatus
+    )
+  );
   assert.equal("pricing" in profile.inventorySummary, false);
   assert.equal("scores" in profile, false);
 }
@@ -183,10 +192,12 @@ test("collector with one wallet composes a profile", async () => {
     profileId: wallet.profileId,
   });
 
+  assert.equal(profile.schemaVersion, 1);
   assert.equal(profile.identity.profileId, wallet.profileId);
   assert.equal(profile.walletSummary.walletCount, 1);
   assert.equal(profile.walletSummary.verifiedWallets[0].walletId, wallet.id);
   assert.equal(profile.walletSummary.latestSuccessfulSync, "2026-07-25T09:00:10.000Z");
+  assert.equal(profile.inventorySummary.inventoryStatus, "ready");
   assert.equal(profile.inventorySummary.uniqueTokenCount, 1);
   assert.equal(profile.inventorySummary.totalCollections, 1);
   assert.equal(profile.inventorySummary.totalQuantity, "1");
@@ -289,6 +300,7 @@ test("collector with empty inventory returns zeroed inventory summary", async ()
   assert.deepEqual(profile.inventorySummary.duplicateAssets, []);
   assert.deepEqual(profile.collectionSummaries, []);
   assert.equal(profile.walletSummary.latestSuccessfulSync, null);
+  assert.equal(profile.inventorySummary.inventoryStatus, "unsynced");
   assertDomainOnlyProfile(profile);
 });
 
@@ -333,6 +345,10 @@ test("mixed EVM and Solana collector composes both namespaces", async () => {
   assert.equal(profile.walletSummary.walletCount, 2);
   assert.equal(profile.walletSummary.chainDistribution.eip155, 1);
   assert.equal(profile.walletSummary.chainDistribution.solana, 1);
+  assert.deepEqual(Object.keys(profile.walletSummary.chainDistribution), [
+    "eip155",
+    "solana",
+  ]);
   assert.equal(profile.inventorySummary.uniqueTokenCount, 2);
   assert.equal(profile.collectionSummaries.length, 2);
   assert.ok(
@@ -412,18 +428,89 @@ test("collection summaries expose required fields only", async () => {
   assert.equal("rarity" in summary, false);
 });
 
-test("inventory unavailable surfaces explicit domain error", async () => {
+test("partial inventory: one synced wallet and one never-synced wallet succeeds", async () => {
+  const profileWallets = createInMemoryProfileWalletRepository();
+  const { wallet: synced } = await createVerifiedWallet(profileWallets, {
+    address: "0x1111111111111111111111111111111111111111",
+  });
+  const { wallet: neverSynced } = await createVerifiedWallet(profileWallets, {
+    address: "0x2222222222222222222222222222222222222222",
+  });
+  const { inventory, service } = createProfileStack({ profileWallets });
+
+  await inventory.upsertHoldings([
+    holdingInput(synced.id, {
+      contractAddress: "0xpartial",
+      tokenId: "1",
+      ownerAddress: synced.normalizedAddress,
+    }),
+  ]);
+  const started = await inventory.startSync({
+    walletId: synced.id,
+    provider: "test",
+    syncStartedAt: "2026-07-25T08:00:00.000Z",
+  });
+  await inventory.completeSync({
+    syncId: started.id,
+    syncStatus: "success",
+    syncCompletedAt: "2026-07-25T08:00:05.000Z",
+  });
+
+  const profile = await service.getCollectorProfile({
+    profileId: "profile-collector",
+  });
+
+  assert.equal(profile.inventorySummary.inventoryStatus, "partial");
+  assert.equal(profile.inventorySummary.uniqueTokenCount, 1);
+  assert.equal(profile.walletSummary.latestSuccessfulSync, "2026-07-25T08:00:05.000Z");
+  assert.equal(profile.walletSummary.walletCount, 2);
+
+  const freshnessById = new Map(
+    profile.walletSummary.walletFreshness.map((entry) => [
+      entry.walletId,
+      entry.lastSuccessfulSyncAt,
+    ])
+  );
+  assert.equal(freshnessById.get(synced.id), "2026-07-25T08:00:05.000Z");
+  assert.equal(freshnessById.get(neverSynced.id), null);
+
+  const needsSync = profile.walletSummary.walletFreshness
+    .filter((entry) => entry.lastSuccessfulSyncAt == null)
+    .map((entry) => entry.walletId);
+  assert.deepEqual(needsSync, [neverSynced.id]);
+});
+
+test("one verified wallet never synced returns unsynced status with available empty data", async () => {
+  const { profileWallets, wallet } = await createVerifiedWallet(undefined, {
+    profileId: "profile-never-synced",
+    address: "0x3333333333333333333333333333333333333333",
+  });
+  const { service } = createProfileStack({ profileWallets });
+
+  const profile = await service.getCollectorProfile({
+    profileId: wallet.profileId,
+  });
+
+  assert.equal(profile.inventorySummary.inventoryStatus, "unsynced");
+  assert.equal(profile.walletSummary.latestSuccessfulSync, null);
+  assert.deepEqual(profile.walletSummary.walletFreshness, [
+    { walletId: wallet.id, lastSuccessfulSyncAt: null },
+  ]);
+  assert.equal(profile.inventorySummary.uniqueTokenCount, 0);
+});
+
+test("inventory unavailable is reserved for unreadable inventory", async () => {
   const { profileWallets, wallet } = await createVerifiedWallet();
   const inventory = createInMemoryWalletInventoryRepository();
   const failingInventory: WalletInventoryRepository = {
     ...inventory,
-    async findLatestSuccessfulSyncs() {
+    async listHoldingsByWallets() {
       throw new Error("db unavailable");
     },
   };
   const analysis = createCollectorAnalysisService({
     profileWallets,
-    inventory,
+    inventory: failingInventory,
   });
   const service = createCollectorProfileService({
     profileWallets,
@@ -436,6 +523,151 @@ test("inventory unavailable surfaces explicit domain error", async () => {
     (error: unknown) =>
       error instanceof InventoryUnavailableError &&
       error.code === "inventory_unavailable"
+  );
+});
+
+test("profile exposes schemaVersion for non-breaking expansion", async () => {
+  const { profileWallets, wallet } = await createVerifiedWallet();
+  const { service } = createProfileStack({ profileWallets });
+  const profile = await service.getCollectorProfile({
+    profileId: wallet.profileId,
+  });
+  assert.equal(profile.schemaVersion, COLLECTOR_PROFILE_SCHEMA_VERSION);
+  assert.equal(COLLECTOR_PROFILE_SCHEMA_VERSION, 1);
+});
+
+test("profile with no display name and empty bio keeps explicit null identity fields", async () => {
+  const { profileWallets, wallet } = await createVerifiedWallet();
+  const { service } = createProfileStack({ profileWallets });
+  const profile = await service.getCollectorProfile({
+    profileId: wallet.profileId,
+  });
+
+  assert.equal(profile.identity.displayName, null);
+  assert.equal(profile.identity.bio, null);
+  assert.equal(profile.identity.avatarUrl, null);
+  assert.equal(Object.hasOwn(profile.identity, "displayName"), true);
+  assert.equal(Object.hasOwn(profile.identity, "bio"), true);
+});
+
+test("profile remains stable when additional nullable extension fields are present", async () => {
+  const { profileWallets, wallet } = await createVerifiedWallet();
+  const { inventory, service } = createProfileStack({ profileWallets });
+  await inventory.upsertHoldings([
+    holdingInput(wallet.id, {
+      contractAddress: "0xstable",
+      tokenId: "1",
+      ownerAddress: wallet.normalizedAddress,
+    }),
+  ]);
+
+  const profile = await service.getCollectorProfile({
+    profileId: wallet.profileId,
+  });
+
+  // Simulate a future additive payload a newer producer might emit.
+  const extended = {
+    ...profile,
+    collectorScore: null,
+    followers: null,
+    showcaseSettings: null,
+  };
+
+  assert.equal(extended.schemaVersion, profile.schemaVersion);
+  assert.equal(extended.identity.profileId, profile.identity.profileId);
+  assert.equal(
+    extended.inventorySummary.uniqueTokenCount,
+    profile.inventorySummary.uniqueTokenCount
+  );
+  assert.deepEqual(
+    extended.collectionSummaries,
+    profile.collectionSummaries
+  );
+  assert.equal(extended.walletSummary.walletCount, profile.walletSummary.walletCount);
+});
+
+test("deterministic ordering for wallets, collections, and chain distribution", async () => {
+  const profileWallets = createInMemoryProfileWalletRepository();
+  const { wallet: walletB } = await createVerifiedWallet(profileWallets, {
+    address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  });
+  const { wallet: walletA } = await createVerifiedWallet(profileWallets, {
+    address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  });
+  const { wallet: solWallet } = await createVerifiedWallet(profileWallets, {
+    chainNamespace: "solana",
+    address: "SoL111111111111111111111111111111111111111",
+  });
+
+  const inventory = createInMemoryWalletInventoryRepository();
+  // Insert in reverse / mixed order relative to expected deterministic output.
+  await inventory.upsertHoldings([
+    holdingInput(solWallet.id, {
+      chainNamespace: "solana",
+      contractAddress: "SoLCollectionZZZ",
+      tokenId: "mint-z",
+      assetStandard: "solana_nft",
+      collectionId: stableCollectionId("solana", "SoLCollectionZZZ"),
+      ownerAddress: solWallet.normalizedAddress,
+    }),
+    holdingInput(walletB.id, {
+      contractAddress: "0xzzz",
+      tokenId: "2",
+      ownerAddress: walletB.normalizedAddress,
+    }),
+    holdingInput(walletA.id, {
+      contractAddress: "0xaaa",
+      tokenId: "1",
+      ownerAddress: walletA.normalizedAddress,
+    }),
+  ]);
+
+  const { service } = createProfileStack({ profileWallets, inventory });
+  const profile = await service.getCollectorProfile({
+    profileId: "profile-collector",
+  });
+
+  assert.deepEqual(
+    profile.walletSummary.verifiedWallets.map((wallet) => wallet.walletId),
+    [walletA.id, walletB.id, solWallet.id].sort((a, b) => a.localeCompare(b))
+  );
+  assert.deepEqual(
+    profile.collectionSummaries.map((entry) => entry.collectionId),
+    [...profile.collectionSummaries.map((entry) => entry.collectionId)].sort(
+      (a, b) => a.localeCompare(b)
+    )
+  );
+  assert.deepEqual(Object.keys(profile.walletSummary.chainDistribution), [
+    "eip155",
+    "solana",
+  ]);
+  assert.deepEqual(
+    profile.walletSummary.walletFreshness.map((entry) => entry.walletId),
+    [...profile.walletSummary.walletFreshness.map((entry) => entry.walletId)].sort(
+      (a, b) => a.localeCompare(b)
+    )
+  );
+});
+
+test("resolveInventoryStatus derives ready/partial/unsynced without recounting inventory", () => {
+  assert.equal(resolveInventoryStatus([]), "unsynced");
+  assert.equal(
+    resolveInventoryStatus([{ walletId: "a", lastSuccessfulSyncAt: null }]),
+    "unsynced"
+  );
+  assert.equal(
+    resolveInventoryStatus([
+      { walletId: "a", lastSuccessfulSyncAt: "2026-07-25T00:00:00.000Z" },
+      { walletId: "b", lastSuccessfulSyncAt: null },
+    ]),
+    "partial"
+  );
+  assert.equal(
+    resolveInventoryStatus([
+      { walletId: "a", lastSuccessfulSyncAt: "2026-07-25T00:00:00.000Z" },
+      { walletId: "b", lastSuccessfulSyncAt: "2026-07-25T01:00:00.000Z" },
+    ]),
+    "ready"
   );
 });
 
@@ -539,11 +771,18 @@ test("deterministic profile output for the same domain state", async () => {
   );
 });
 
-test("docs describe PR7 read-only composition boundaries", () => {
+test("docs describe PR7 architecture review guarantees", () => {
   const docs = readFileSync("docs/collector-profile-read-model.md", "utf8");
   assert.match(docs, /CollectorProfileService`? is read-only/i);
   assert.match(docs, /No blockchain calls occur in PR7/i);
   assert.match(docs, /No scoring or marketplace enrichment occurs in PR7/i);
   assert.match(docs, /Future UI should consume this read model/i);
   assert.match(docs, /CollectorAnalysisService/);
+  assert.match(docs, /schemaVersion/);
+  assert.match(docs, /walletFreshness/);
+  assert.match(docs, /inventoryStatus/);
+  assert.match(docs, /Repository call sequence/i);
+  assert.match(docs, /listHoldingsByWallets/);
+  assert.match(docs, /findLatestSuccessfulSyncs/);
+  assert.match(docs, /Assemble, do not analyze/i);
 });
