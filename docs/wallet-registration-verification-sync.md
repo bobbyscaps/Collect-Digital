@@ -184,6 +184,8 @@ dependency-injection bug and must not be papered over with insecure fallbacks.
 - No arbitrary message verification
 - No transaction or approval requests
 - No secrets reach the client (`SUPABASE_SERVICE_ROLE_KEY` is server-only)
+- Product tables enable RLS with no anon/authenticated policies; table and
+  privileged RPC execute grants are revoked from those roles
 - Wallet role is preserved
 - Verified status is never inferred from login alone
 - Only verified wallets may sync; sync validates wallet ownership server-side
