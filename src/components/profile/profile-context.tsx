@@ -23,6 +23,11 @@ import {
   type CollectorIdentityWalletsData,
 } from "@/lib/collector-identity/api-models";
 import { deriveUsername } from "@/lib/profile/data";
+import {
+  USER_FACING_IDENTITY_UNAVAILABLE,
+  isInfrastructureErrorMessage,
+  toUserFacingErrorMessage,
+} from "@/lib/errors/user-facing";
 
 export type CollectorIdentityViewModel = {
   username: string;
@@ -132,10 +137,17 @@ export function ProfileProvider({
       } catch (cause) {
         if (!cancelled) {
           setIdentity(null);
-          setIdentityError(
+          const raw =
             cause instanceof Error
               ? cause.message
-              : "Unable to load Collector Identity."
+              : "Unable to load Collector Identity.";
+          setIdentityError(
+            isInfrastructureErrorMessage(raw)
+              ? USER_FACING_IDENTITY_UNAVAILABLE
+              : toUserFacingErrorMessage(
+                  cause,
+                  USER_FACING_IDENTITY_UNAVAILABLE
+                )
           );
         }
       } finally {

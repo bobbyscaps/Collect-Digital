@@ -107,6 +107,49 @@ Real metrics that begin appearing:
 - Background job systems
 - PR10 work
 
+## Canonical signing (exact server message)
+
+1. Client calls `POST /api/wallets/verification/challenge`.
+2. Server builds the message with `buildWalletOwnershipChallengeMessage` from
+   persisted challenge + wallet rows and returns `{ message, challengeId, ... }`.
+3. Client displays that exact `message` string and passes **the same string** to
+   Privy signing (`wallet.sign(message)` / Solana `signMessage`).
+4. Client submits `{ challengeId, walletId, signature }` — never a client-built
+   message body.
+5. Server reconstructs the canonical message again from DB rows and verifies the
+   signature against that reconstruction.
+
+There is no client-side message reconstruction for verification, no alternate
+formatting, and no arbitrary message text.
+
+## Required Vercel environment variables
+
+Wallet verification and Collector Identity require a Supabase admin client on
+the **server**. Preview/Production deployments that omit these variables fail
+with a logged infrastructure error and show a user-friendly unavailable state.
+
+| Variable | Scope | Required | Notes |
+|----------|-------|----------|-------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Server (+ public) | **Yes** | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server only** | **Yes** | Service role key — never `NEXT_PUBLIC_` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Recommended | Reserved for future client reads |
+| `NEXT_PUBLIC_PRIVY_APP_ID` | Public | **Yes** | Privy login |
+
+Add them in Vercel → Project Settings → Environment Variables for
+**Production**, **Preview**, and **Development**.
+
+Why the service role is required:
+
+- Server routes must read/write `profile_wallets`, verification challenges, and
+  inventory under privileged access after verifying the Privy JWT.
+- The service role must never ship to the browser. Client code only receives
+  typed API responses.
+
+Root cause of `Supabase admin client unavailable for ProfileWalletRepository`
+on Preview: **deployment configuration** — missing
+`SUPABASE_SERVICE_ROLE_KEY` and/or `NEXT_PUBLIC_SUPABASE_URL`. This is not a
+dependency-injection bug and must not be papered over with insecure fallbacks.
+
 ## Security guarantees
 
 - `profileId` always comes from trusted server auth
@@ -117,10 +160,12 @@ Real metrics that begin appearing:
 - Verification completion remains atomic
 - No arbitrary message verification
 - No transaction or approval requests
-- No secrets reach the client
+- No secrets reach the client (`SUPABASE_SERVICE_ROLE_KEY` is server-only)
 - Wallet role is preserved
 - Verified status is never inferred from login alone
-- Domain errors are mapped explicitly; stack traces are not leaked
+- Only verified wallets may sync; sync validates wallet ownership server-side
+- Domain errors are mapped to user-facing copy; repository names and stack
+  traces are never leaked to clients (logged server-side only)
 
 ## API boundaries
 

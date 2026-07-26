@@ -414,13 +414,13 @@ test("typed client parses success and typed errors", async () => {
             state: "empty",
             data: null,
             lastUpdatedAt: null,
-            message: "Inventory requires at least one verified wallet.",
+            message: "Verify a wallet to sync your collectibles.",
           },
           collectionSummaries: {
             state: "empty",
             data: null,
             lastUpdatedAt: null,
-            message: "Collection summaries require at least one verified wallet.",
+            message: "Verify a wallet to see collection summaries.",
           },
           statusModules: {
             collectorScore: {

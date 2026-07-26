@@ -141,20 +141,28 @@ function mapUnknownError(cause: unknown): {
     return { status: 400, code: cause.code === "sync_failed" ? "sync_failed" : "invalid_request", message: cause.message };
   }
 
-  const message =
+  const technical =
     cause instanceof Error ? cause.message : "Wallet verification request failed.";
   if (
-    message.includes("Supabase admin client unavailable") ||
-    message.includes("SUPABASE")
+    technical.includes("Supabase admin client unavailable") ||
+    technical.includes("SUPABASE") ||
+    technical.toLowerCase().includes("repository")
   ) {
-    return { status: 503, code: "service_unavailable", message };
+    console.error("[collect-digital] wallet-verification infrastructure:", technical);
+    return {
+      status: 503,
+      code: "service_unavailable",
+      message:
+        "Wallet verification is temporarily unavailable. Please try again shortly.",
+    };
   }
 
-  // Never leak stack traces to clients.
+  // Never leak stack traces or infrastructure names to clients.
+  console.error("[collect-digital] wallet-verification unexpected:", technical);
   return {
     status: 500,
     code: "internal_error",
-    message: "An unexpected error occurred.",
+    message: "Something went wrong. Please try again shortly.",
   };
 }
 

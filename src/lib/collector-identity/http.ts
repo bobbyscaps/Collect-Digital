@@ -4,6 +4,13 @@ import { requireAuthenticatedProfile } from "@/lib/auth/require-authenticated-pr
 import type { CollectorIdentityService } from "@/lib/collector-identity/compose";
 import type { CollectorIdentityErrorResponse } from "@/lib/collector-identity/api-models";
 import { createDefaultCollectorIdentityService } from "@/lib/collector-identity/wiring";
+import {
+  USER_FACING_IDENTITY_UNAVAILABLE,
+  USER_FACING_INTERNAL_ERROR,
+  isInfrastructureErrorMessage,
+  logTechnicalError,
+  toUserFacingErrorMessage,
+} from "@/lib/errors/user-facing";
 
 export type CollectorIdentityRouteDependencies = {
   identityService?: CollectorIdentityService;
@@ -44,14 +51,23 @@ export async function handleGetCollectorIdentityMe(
     const identity = await identityService.getMyIdentity(authResult.auth);
     return NextResponse.json(identity);
   } catch (cause) {
-    const message =
+    logTechnicalError("collector-identity/me", cause);
+    const technical =
       cause instanceof Error ? cause.message : "Collector Identity unavailable.";
     if (
-      message.includes("Supabase admin client unavailable") ||
-      message.includes("SUPABASE")
+      isInfrastructureErrorMessage(technical) ||
+      technical.includes("SUPABASE")
     ) {
-      return errorResponse(503, "service_unavailable", message);
+      return errorResponse(
+        503,
+        "service_unavailable",
+        USER_FACING_IDENTITY_UNAVAILABLE
+      );
     }
-    return errorResponse(500, "internal_error", message);
+    return errorResponse(
+      500,
+      "internal_error",
+      toUserFacingErrorMessage(cause, USER_FACING_INTERNAL_ERROR)
+    );
   }
 }

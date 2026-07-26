@@ -77,6 +77,11 @@ function StateBanner({
           ? Sparkles
           : Inbox;
 
+  // For empty / error / coming_soon the body already shows `message` once.
+  // Only stale / partial keep contextual message in the banner (with timestamp).
+  const bannerMessage =
+    state === "stale" || state === "partial" ? message : null;
+
   return (
     <div
       className={cn(
@@ -87,7 +92,9 @@ function StateBanner({
     >
       <Icon className="h-3.5 w-3.5 shrink-0" />
       <span className="font-medium uppercase tracking-wider">{label}</span>
-      {message && <span className="text-[11px] opacity-90">{message}</span>}
+      {bannerMessage && (
+        <span className="text-[11px] opacity-90">{bannerMessage}</span>
+      )}
       {state === "stale" && formatted && (
         <span className="ml-auto text-[11px] opacity-90">
           Last updated {formatted}
