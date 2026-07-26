@@ -1,36 +1,11 @@
 "use client";
 
-import {
-  Award,
-  Coins,
-  MessageSquare,
-  ShoppingCart,
-  Sparkles,
-  Tag,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { Activity } from "lucide-react";
 
 import { useProfile } from "@/components/profile/profile-context";
 import { LockedCard } from "@/components/auth/locked-card";
+import { ProgressiveData } from "@/components/collector-identity/progressive-data";
 import { ProfileSection } from "@/components/profile/ui";
-
-type ActivityRow = {
-  icon: LucideIcon;
-  label: string;
-  detail: string;
-  when: string;
-};
-
-const ACTIVITY: ActivityRow[] = [
-  { icon: ShoppingCart, label: "Purchased", detail: "Azuki #1234", when: "3h ago" },
-  { icon: Tag, label: "Sold", detail: "Cool Cat #900", when: "1d ago" },
-  { icon: Sparkles, label: "Minted", detail: "New Genesis Drop", when: "2d ago" },
-  { icon: MessageSquare, label: "Commented", detail: "on Pudgy Penguins #77", when: "4d ago" },
-  { icon: Users, label: "Contributed", detail: "BAYC community wiki", when: "5d ago" },
-  { icon: Coins, label: "Earned points", detail: "+120 Collect Points", when: "5d ago" },
-  { icon: Award, label: "Badge achieved", detail: "Community Contributor", when: "1w ago" },
-];
 
 export default function ActivityPage() {
   const { viewerAuthenticated } = useProfile();
@@ -38,15 +13,13 @@ export default function ActivityPage() {
   if (!viewerAuthenticated) {
     return (
       <LockedCard
-        title="Unlock full activity history"
-        description="Log in to view purchases, sales, mints, transfers, comments, community contributions, point earnings, and badge achievements."
+        title="Unlock activity history"
+        description="Log in to access Collector Identity. Activity feeds are not fabricated — they will appear when backed by real events."
         cta="Log in to view activity"
         items={[
-          "Purchases & sales",
-          "Mints & transfers",
-          "Comments & contributions",
-          "Point earnings",
-          "Badge achievements",
+          "Wallet sync events",
+          "Inventory changes",
+          "Achievement awards (coming soon)",
         ]}
       />
     );
@@ -55,24 +28,27 @@ export default function ActivityPage() {
   return (
     <ProfileSection
       title="Activity"
-      description="Purchases, sales, mints, transfers, comments, contributions, points, and badges."
+      description="Activity history is a future dynamic status module."
     >
-      <ul className="relative space-y-1 before:absolute before:left-[19px] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-white/10">
-        {ACTIVITY.map((row, index) => (
-          <li key={index} className="relative flex items-center gap-4 py-2.5">
-            <span className="z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-background text-indigo-300">
-              <row.icon className="h-4 w-4" />
+      <ProgressiveData
+        state="coming_soon"
+        data={null}
+        message="Activity feed coming soon"
+        comingSoon={
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/12 bg-white/[0.02] px-6 py-12 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-violet-500/20 to-sky-400/20 text-indigo-300 ring-1 ring-inset ring-white/10">
+              <Activity className="h-5 w-5" />
             </span>
-            <div className="flex flex-1 items-center justify-between gap-3">
-              <p className="text-sm">
-                <span className="font-medium">{row.label}</span>{" "}
-                <span className="text-muted-foreground">{row.detail}</span>
-              </p>
-              <span className="shrink-0 text-xs text-muted-foreground">{row.when}</span>
-            </div>
-          </li>
-        ))}
-      </ul>
+            <p className="mt-4 text-sm font-medium">Coming Soon</p>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              Purchases, sales, mints, and contributions will appear from real
+              event sources — never sample timelines.
+            </p>
+          </div>
+        }
+      >
+        {() => null}
+      </ProgressiveData>
     </ProfileSection>
   );
 }

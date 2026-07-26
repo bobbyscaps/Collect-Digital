@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { getProfileWithRating } from "@/lib/profile/resolve";
 import { ProfileProvider } from "@/components/profile/profile-context";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfileTabs } from "@/components/profile/profile-tabs";
@@ -26,7 +25,6 @@ export default async function ProfileLayout({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const profile = await getProfileWithRating(username);
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -43,7 +41,7 @@ export default async function ProfileLayout({
         </Link>
       </header>
 
-      <ProfileProvider profile={profile}>
+      <ProfileProvider username={username}>
         <main className="mx-auto max-w-5xl px-4 pb-24 sm:px-6">
           <ProfileHeader />
           <ProfileTabs />
