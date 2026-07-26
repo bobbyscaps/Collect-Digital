@@ -4,6 +4,7 @@ import { Award, Wallet } from "lucide-react";
 
 import { useProfile } from "@/components/profile/profile-context";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
+import { hasNoVerifiedWallets } from "@/components/collector-identity/no-verified-wallets-empty-state";
 import { ProfileSection } from "@/components/profile/ui";
 import { LockedCard } from "@/components/auth/locked-card";
 
@@ -69,6 +70,8 @@ export default function BioPage() {
     );
   }
 
+  const noVerifiedWallets = hasNoVerifiedWallets(identity);
+
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="space-y-6 lg:col-span-2">
@@ -100,62 +103,68 @@ export default function BioPage() {
           />
         </ProfileSection>
 
-        <ProfileSection title="Verified Wallets">
-          <ProgressiveData
-            state={identity.wallets.state}
-            data={identity.wallets.data}
-            lastUpdatedAt={identity.wallets.lastUpdatedAt}
-            message={identity.wallets.message}
-            render={(data) => (
-              <ul className="divide-y divide-white/5">
-                {data.verifiedWallets.map((wallet) => (
-                  <li
-                    key={wallet.walletId}
-                    className="flex items-center gap-3 py-3 text-sm"
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white/5 text-indigo-300">
-                      <Wallet className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{wallet.address}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {wallet.chainNamespace}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          />
-        </ProfileSection>
+        {!noVerifiedWallets && (
+          <ProfileSection title="Verified Wallets">
+            <ProgressiveData
+              state={identity.wallets.state}
+              data={identity.wallets.data}
+              lastUpdatedAt={identity.wallets.lastUpdatedAt}
+              message={identity.wallets.message}
+              render={(data) => (
+                <ul className="divide-y divide-white/5">
+                  {data.verifiedWallets.map((wallet) => (
+                    <li
+                      key={wallet.walletId}
+                      className="flex items-center gap-3 py-3 text-sm"
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white/5 text-indigo-300">
+                        <Wallet className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{wallet.address}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {wallet.chainNamespace}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            />
+          </ProfileSection>
+        )}
       </div>
 
       <div className="space-y-6">
         <ProfileSection title="Current Status">
           <div className="space-y-4 text-sm">
-            <ProgressiveData
-              title="Wallet verification"
-              state={identity.wallets.state}
-              data={identity.wallets.data}
-              message={identity.wallets.message}
-              render={(data) => (
-                <p>
-                  {data.verifiedWalletCount} verified wallet
-                  {data.verifiedWalletCount === 1 ? "" : "s"}
-                </p>
-              )}
-            />
+            {!noVerifiedWallets && (
+              <>
+                <ProgressiveData
+                  title="Wallet verification"
+                  state={identity.wallets.state}
+                  data={identity.wallets.data}
+                  message={identity.wallets.message}
+                  render={(data) => (
+                    <p>
+                      {data.verifiedWalletCount} verified wallet
+                      {data.verifiedWalletCount === 1 ? "" : "s"}
+                    </p>
+                  )}
+                />
 
-            <ProgressiveData
-              title="Inventory freshness"
-              state={identity.inventory.state}
-              data={identity.inventory.data}
-              lastUpdatedAt={identity.inventory.lastUpdatedAt}
-              message={identity.inventory.message}
-              render={(data) => (
-                <p className="capitalize">{data.inventoryStatus}</p>
-              )}
-            />
+                <ProgressiveData
+                  title="Inventory freshness"
+                  state={identity.inventory.state}
+                  data={identity.inventory.data}
+                  lastUpdatedAt={identity.inventory.lastUpdatedAt}
+                  message={identity.inventory.message}
+                  render={(data) => (
+                    <p className="capitalize">{data.inventoryStatus}</p>
+                  )}
+                />
+              </>
+            )}
 
             <ProgressiveData
               title="Collector Score"

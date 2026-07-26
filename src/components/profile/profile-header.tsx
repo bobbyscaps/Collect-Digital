@@ -16,6 +16,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { useGatedLogin } from "@/components/auth/gated-login";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
+import {
+  hasNoVerifiedWallets,
+  NoVerifiedWalletsEmptyState,
+} from "@/components/collector-identity/no-verified-wallets-empty-state";
 import { useProfile } from "./profile-context";
 
 function HeaderStat({
@@ -79,6 +83,7 @@ export function ProfileHeader() {
   const verifiedCount = identity?.wallets.data?.verifiedWalletCount ?? null;
   const hasVerifiedWallet =
     typeof verifiedCount === "number" ? verifiedCount > 0 : false;
+  const noVerifiedWallets = hasNoVerifiedWallets(identity);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
@@ -217,9 +222,7 @@ export function ProfileHeader() {
                 ? "…"
                 : identity?.inventory.state === "stale"
                   ? "Stale"
-                  : (identity?.inventory.data?.inventoryStatus ??
-                    identity?.inventory.state ??
-                    "—")
+                  : (identity?.inventory.data?.inventoryStatus ?? "—")
             }
           />
           <HeaderStat
@@ -241,16 +244,21 @@ export function ProfileHeader() {
             {identityError && (
               <p className="text-xs text-rose-200/90">{identityError}</p>
             )}
-            {identity &&
+            {noVerifiedWallets ? (
+              <NoVerifiedWalletsEmptyState />
+            ) : (
+              identity &&
               identity.inventory.state !== "live" &&
-              identity.inventory.state !== "loading" && (
+              identity.inventory.state !== "loading" &&
+              identity.inventory.state !== "empty" && (
                 <ProgressiveData
                   state={identity.inventory.state}
                   data={identity.inventory.data}
                   lastUpdatedAt={identity.inventory.lastUpdatedAt}
                   message={identity.inventory.message}
                 />
-              )}
+              )
+            )}
           </div>
         )}
 

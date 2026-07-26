@@ -5,6 +5,7 @@ import { Layers } from "lucide-react";
 import { useProfile } from "@/components/profile/profile-context";
 import { LockedCard } from "@/components/auth/locked-card";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
+import { hasNoVerifiedWallets } from "@/components/collector-identity/no-verified-wallets-empty-state";
 import { EmptyState, ProfileSection, Stat } from "@/components/profile/ui";
 
 export default function CollectionPage() {
@@ -35,6 +36,18 @@ export default function CollectionPage() {
           title={identityLoading ? "Loading inventory…" : "Inventory unavailable"}
           description="Collection inventory is loaded from your authenticated Collector Identity. NFT gallery and marketplace enrichment are out of scope for this release."
         />
+      </ProfileSection>
+    );
+  }
+
+  // Header already shows the single no-verified-wallets empty state.
+  if (hasNoVerifiedWallets(identity)) {
+    return (
+      <ProfileSection title="Collection">
+        <p className="text-sm text-muted-foreground">
+          Collection inventory appears after you verify a wallet and sync
+          collectibles.
+        </p>
       </ProfileSection>
     );
   }

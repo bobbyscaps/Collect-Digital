@@ -14,6 +14,7 @@ import {
 import {
   COLLECTOR_IDENTITY_API_SCHEMA_VERSION,
   type CollectorIdentityResponse,
+  type ProgressiveDataState,
 } from "@/lib/collector-identity/api-models";
 import {
   CollectorIdentityClientError,
@@ -28,7 +29,12 @@ import {
   type WalletInventoryRepository,
 } from "@/lib/wallet-inventory/repository";
 import { ProgressiveData } from "@/components/collector-identity/progressive-data";
-import type { ProgressiveDataState } from "@/lib/collector-identity/api-models";
+import {
+  hasNoVerifiedWallets,
+  NO_VERIFIED_WALLETS_DESCRIPTION,
+  NO_VERIFIED_WALLETS_TITLE,
+  NoVerifiedWalletsEmptyState,
+} from "@/components/collector-identity/no-verified-wallets-empty-state";
 
 async function createVerifiedWallet(
   profileWallets = createInMemoryProfileWalletRepository(),
@@ -494,6 +500,81 @@ const UI_STATES: ProgressiveDataState[] = [
   "error",
   "coming_soon",
 ];
+
+test("no-verified-wallets empty state renders title, description, and Verify Wallet action", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(NoVerifiedWalletsEmptyState)
+  );
+
+  assert.match(html, /data-testid="no-verified-wallets-empty-state"/);
+  assert.match(html, new RegExp(NO_VERIFIED_WALLETS_TITLE));
+  assert.match(html, new RegExp(NO_VERIFIED_WALLETS_DESCRIPTION));
+  assert.match(html, /data-testid="verify-wallet-action"/);
+  assert.match(html, /Verify Wallet/);
+  assert.match(html, /Coming next/);
+  assert.match(html, /disabled/);
+  assert.equal(html.includes("Inventory requires at least one verified wallet"), false);
+});
+
+test("no-verified-wallets empty state action does not mutate verification state", () => {
+  const before = {
+    walletsVerified: 0,
+    syncStarted: false,
+  };
+
+  const html = renderToStaticMarkup(
+    React.createElement(NoVerifiedWalletsEmptyState)
+  );
+
+  // Disabled placeholder only — no onClick / form / navigation that could verify.
+  assert.match(html, /disabled/);
+  assert.equal(html.includes("onClick"), false);
+  assert.equal(html.includes("href="), false);
+  assert.equal(html.includes("markWalletVerified"), false);
+  assert.equal(html.includes("syncVerifiedWallet"), false);
+  assert.deepEqual(before, { walletsVerified: 0, syncStarted: false });
+});
+
+test("hasNoVerifiedWallets detects empty wallets section only", () => {
+  const emptyIdentity = {
+    wallets: { state: "empty", data: null, lastUpdatedAt: null, message: "x" },
+  } as CollectorIdentityResponse;
+  const liveIdentity = {
+    wallets: {
+      state: "live",
+      data: { verifiedWalletCount: 1 },
+      lastUpdatedAt: null,
+      message: null,
+    },
+  } as CollectorIdentityResponse;
+
+  assert.equal(hasNoVerifiedWallets(emptyIdentity), true);
+  assert.equal(hasNoVerifiedWallets(liveIdentity), false);
+  assert.equal(hasNoVerifiedWallets(null), false);
+});
+
+test("profile header uses a single no-verified-wallets empty state", () => {
+  const header = readFileSync(
+    path.join(process.cwd(), "src/components/profile/profile-header.tsx"),
+    "utf8"
+  );
+  const bio = readFileSync(
+    path.join(process.cwd(), "src/app/profile/[username]/page.tsx"),
+    "utf8"
+  );
+
+  assert.match(header, /NoVerifiedWalletsEmptyState/);
+  assert.match(header, /hasNoVerifiedWallets/);
+  assert.equal(header.includes("Inventory requires at least one verified wallet"), false);
+  // Bio must not re-render a second copy of the guided empty state.
+  assert.equal(bio.includes("NoVerifiedWalletsEmptyState"), false);
+  assert.equal(bio.includes("Inventory requires at least one verified wallet"), false);
+  assert.match(header, /Verified Wallets/);
+  assert.match(header, /Collections/);
+  assert.match(header, /Unique Tokens/);
+  assert.match(header, /Inventory Status/);
+  assert.match(header, /Latest Sync/);
+});
 
 for (const state of UI_STATES) {
   test(`UI ProgressiveData renders ${state} state`, () => {
