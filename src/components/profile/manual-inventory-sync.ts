@@ -14,8 +14,17 @@ export interface ManualInventorySyncResult {
 
 export interface ManualInventorySyncFeedback {
   shouldRefreshIdentity: boolean;
-  successMessage: string | null;
-  errorMessage: string | null;
+  status: ManualInventorySyncStatus | null;
+}
+
+export interface ManualInventorySyncStatus {
+  kind: "success" | "error";
+  message: string;
+  details: {
+    attempted: number;
+    succeeded: number;
+    failed: number;
+  };
 }
 
 type SyncWalletInventoryClient = typeof syncVerifiedWalletInventory;
@@ -101,26 +110,33 @@ export function buildManualInventorySyncFeedback(
 ): ManualInventorySyncFeedback {
   const failureCount = result.failures.length;
   const shouldRefreshIdentity = result.succeeded > 0;
-  const successMessage =
-    result.succeeded === 0
-      ? null
-      : result.succeeded === 1
-        ? "Collectibles synchronized for 1 verified wallet."
-        : `Collectibles synchronized for ${result.succeeded} verified wallets.`;
+  const details = {
+    attempted: result.attempted,
+    succeeded: result.succeeded,
+    failed: failureCount,
+  };
 
-  let errorMessage: string | null = null;
+  let status: ManualInventorySyncStatus | null = null;
   if (failureCount > 0) {
     const firstFailure = result.failures[0];
-    if (result.succeeded > 0) {
-      errorMessage = `Synchronized ${result.succeeded} wallet(s), but ${failureCount} failed. ${firstFailure.message}`;
-    } else {
-      errorMessage = firstFailure.message;
-    }
+    status = {
+      kind: "error",
+      message:
+        result.succeeded > 0
+          ? `Some wallets failed to sync. ${firstFailure.message}`
+          : firstFailure.message,
+      details,
+    };
+  } else if (result.succeeded > 0) {
+    status = {
+      kind: "success",
+      message: "Inventory updated.",
+      details,
+    };
   }
 
   return {
     shouldRefreshIdentity,
-    successMessage,
-    errorMessage,
+    status,
   };
 }

@@ -159,8 +159,13 @@ test("successful sync feedback triggers identity refresh", () => {
     failures: [],
   });
   assert.equal(feedback.shouldRefreshIdentity, true);
-  assert.equal(feedback.successMessage, "Collectibles synchronized for 1 verified wallet.");
-  assert.equal(feedback.errorMessage, null);
+  assert.equal(feedback.status?.kind, "success");
+  assert.equal(feedback.status?.message, "Inventory updated.");
+  assert.deepEqual(feedback.status?.details, {
+    attempted: 1,
+    succeeded: 1,
+    failed: 0,
+  });
 });
 
 test("failed sync feedback preserves displayed snapshot and reports error", () => {
@@ -170,8 +175,13 @@ test("failed sync feedback preserves displayed snapshot and reports error", () =
     failures: [{ walletId: "wallet-1", message: "provider unavailable" }],
   });
   assert.equal(feedback.shouldRefreshIdentity, false);
-  assert.equal(feedback.successMessage, null);
-  assert.equal(feedback.errorMessage, "provider unavailable");
+  assert.equal(feedback.status?.kind, "error");
+  assert.equal(feedback.status?.message, "provider unavailable");
+  assert.deepEqual(feedback.status?.details, {
+    attempted: 1,
+    succeeded: 0,
+    failed: 1,
+  });
 });
 
 test("profile sync action does not invoke wallet verification endpoints", () => {
@@ -190,6 +200,8 @@ test("loading and error state markers are rendered in profile header source", ()
     path.join(process.cwd(), "src/components/profile/profile-header.tsx"),
     "utf8"
   );
+  assert.match(source, /label="Latest Sync"/);
+  assert.match(source, /footer=\{/);
   assert.match(source, /data-testid="sync-collectibles-action"/);
   assert.match(source, /data-testid="sync-collectibles-error"/);
   assert.match(source, /getSyncCollectiblesButtonLabel\(syncingInventory\)/);
