@@ -3,6 +3,7 @@ import type { WalletChainNamespace } from "@/lib/profile-wallets/domain";
 import type { NormalizedHolding } from "@/lib/wallet-inventory/domain";
 
 const RESERVOIR_BASE_URL = "https://api.reservoir.tools";
+const ALCHEMY_ETHEREUM_MAINNET_NETWORK = "eth-mainnet";
 const TOKEN_BATCH_SIZE = 20;
 
 type TraitFloor = NonNullable<CollectorIdentityAssetData["topTraitFloor"]>;
@@ -22,6 +23,13 @@ interface AssetMetadata {
 interface CollectionMetadata {
   name: string | null;
   floorPriceEth: number | null;
+}
+
+interface TokenLookupInput {
+  assetKey: string;
+  chainNamespace: WalletChainNamespace;
+  contractAddress: string;
+  tokenId: string;
 }
 
 export interface CollectorIdentityAssetService {
@@ -118,6 +126,30 @@ function normalizeContractForAssetKey(
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function toErrorMessage(cause: unknown): string {
+  if (cause instanceof Error) return cause.message;
+  return String(cause);
+}
+
+function resolveProviderError(payload: unknown): string | null {
+  const record = asRecord(payload);
+  if (!record || !("error" in record)) return null;
+  const error = record.error;
+  if (typeof error === "string" && error.trim()) return error.trim();
+  const errorRecord = asRecord(error);
+  if (!errorRecord) return "Provider returned an error payload.";
+  const code =
+    typeof errorRecord.code === "number" || typeof errorRecord.code === "string"
+      ? String(errorRecord.code)
+      : null;
+  const message =
+    typeof errorRecord.message === "string" && errorRecord.message.trim()
+      ? errorRecord.message.trim()
+      : null;
+  if (code && message) return `${code}: ${message}`;
+  return message ?? code ?? "Provider returned an error payload.";
 }
 
 function asString(value: unknown): string | null {
@@ -263,6 +295,53 @@ function parseTokenMetadata(entry: unknown): {
   };
 }
 
+function selectAlchemyImage(payload: Record<string, unknown> | null): string | null {
+  const image = asRecord(payload?.image);
+  return normalizeMediaUrl(
+    asString(image?.cachedUrl) ??
+      asString(image?.pngUrl) ??
+      asString(image?.thumbnailUrl) ??
+      asString(image?.originalUrl) ??
+      asString(payload?.image) ??
+      asStringAtPath(payload, ["raw", "metadata", "image"]) ??
+      asStringAtPath(payload, ["raw", "metadata", "image_url"]) ??
+      null
+  );
+}
+
+function parseAlchemyTokenMetadata(payload: unknown): {
+  metadata: AssetMetadata;
+} | null {
+  const record = asRecord(payload);
+  if (!record) return null;
+
+  const name =
+    asString(record.name) ??
+    asString(record.title) ??
+    asStringAtPath(record, ["raw", "metadata", "name"]);
+  const collectionName =
+    asStringAtPath(record, ["collection", "name"]) ??
+    asStringAtPath(record, ["contract", "openSeaMetadata", "collectionName"]) ??
+    asStringAtPath(record, ["contract", "name"]);
+  const collectionFloorPriceEth =
+    asNumberAtPath(record, ["contract", "openSeaMetadata", "floorPrice"]) ??
+    asNumberAtPath(record, ["contract", "floorPrice"]);
+
+  return {
+    metadata: {
+      listedPriceEth: null,
+      highestOfferEth: null,
+      rarityRank: null,
+      name,
+      imageUrl: selectAlchemyImage(record),
+      collectionName,
+      collectionFloorPriceEth,
+      topTraitFloor: null,
+      openseaUrl: null,
+    },
+  };
+}
+
 async function fetchReservoirJson<T>(
   path: string,
   apiKey?: string
@@ -275,20 +354,50 @@ async function fetchReservoirJson<T>(
       },
       next: { revalidate: 180 },
     });
-    if (!response.ok) return null;
-    return (await response.json()) as T;
+    if (!response.ok) {
+      console.warn("[collector-identity-assets] reservoir metadata HTTP failure", {
+        status: response.status,
+        path,
+      });
+      return null;
+    }
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      console.warn(
+        "[collector-identity-assets] reservoir metadata malformed JSON response",
+        { path }
+      );
+      return null;
+    }
+    const providerError = resolveProviderError(payload);
+    if (providerError) {
+      console.warn("[collector-identity-assets] reservoir metadata API error", {
+        path,
+        error: providerError,
+      });
+      return null;
+    }
+    return payload as T;
   } catch {
+    console.warn("[collector-identity-assets] reservoir metadata request failure", {
+      path,
+    });
     return null;
   }
 }
 
 async function fetchTokenMetadata(
-  holdings: readonly NormalizedHolding[],
+  lookups: readonly TokenLookupInput[],
   apiKey?: string
 ): Promise<Map<string, AssetMetadata>> {
   const uniqueTokens = Array.from(
     new Set(
-      holdings.map((holding) => `${holding.contractAddress}:${normalizeTokenId(holding.tokenId)}`)
+      lookups.map(
+        (lookup) =>
+          `${lookup.contractAddress}:${normalizeTokenId(lookup.tokenId)}`
+      )
     )
   );
   const metadataByKey = new Map<string, AssetMetadata>();
@@ -306,9 +415,109 @@ async function fetchTokenMetadata(
 
     for (const item of payload.tokens) {
       const parsed = parseTokenMetadata(item);
-      if (!parsed || !parsed.tokenKey) continue;
+      if (!parsed || !parsed.tokenKey) {
+        console.warn("[collector-identity-assets] reservoir token metadata parse failure", {
+          path: `/tokens/v7?batchSize=${batch.length}`,
+        });
+        continue;
+      }
       metadataByKey.set(parsed.tokenKey, parsed.metadata);
     }
+  }
+
+  return metadataByKey;
+}
+
+async function fetchAlchemyTokenMetadata(
+  lookups: readonly TokenLookupInput[],
+  apiKey?: string
+): Promise<Map<string, AssetMetadata>> {
+  if (!apiKey) {
+    console.warn("[collector-identity-assets] alchemy metadata unavailable", {
+      reason: "ALCHEMY_API_KEY missing",
+    });
+    return new Map<string, AssetMetadata>();
+  }
+
+  const evmLookups = lookups.filter((lookup) => lookup.chainNamespace === "eip155");
+  const metadataByKey = new Map<string, AssetMetadata>();
+
+  const settled = await Promise.allSettled(
+    evmLookups.map(async (lookup) => {
+      const url = new URL(
+        `https://${ALCHEMY_ETHEREUM_MAINNET_NETWORK}.g.alchemy.com/nft/v3/${apiKey}/getNFTMetadata`
+      );
+      url.searchParams.set("contractAddress", lookup.contractAddress);
+      url.searchParams.set("tokenId", lookup.tokenId);
+      url.searchParams.set("refreshCache", "false");
+
+      try {
+        const response = await fetch(url.toString(), {
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          console.warn("[collector-identity-assets] alchemy metadata HTTP failure", {
+            status: response.status,
+            chainNamespace: lookup.chainNamespace,
+            contractAddress: lookup.contractAddress,
+            tokenId: lookup.tokenId,
+          });
+          return;
+        }
+
+        let payload: unknown;
+        try {
+          payload = await response.json();
+        } catch {
+          console.warn(
+            "[collector-identity-assets] alchemy metadata malformed JSON response",
+            {
+              chainNamespace: lookup.chainNamespace,
+              contractAddress: lookup.contractAddress,
+              tokenId: lookup.tokenId,
+            }
+          );
+          return;
+        }
+
+        const providerError = resolveProviderError(payload);
+        if (providerError) {
+          console.warn("[collector-identity-assets] alchemy metadata API error", {
+            chainNamespace: lookup.chainNamespace,
+            contractAddress: lookup.contractAddress,
+            tokenId: lookup.tokenId,
+            error: providerError,
+          });
+          return;
+        }
+
+        const parsed = parseAlchemyTokenMetadata(payload);
+        if (!parsed) {
+          console.warn("[collector-identity-assets] alchemy metadata parse failure", {
+            chainNamespace: lookup.chainNamespace,
+            contractAddress: lookup.contractAddress,
+            tokenId: lookup.tokenId,
+          });
+          return;
+        }
+
+        metadataByKey.set(lookup.assetKey, parsed.metadata);
+      } catch (cause) {
+        console.warn("[collector-identity-assets] alchemy metadata request failure", {
+          chainNamespace: lookup.chainNamespace,
+          contractAddress: lookup.contractAddress,
+          tokenId: lookup.tokenId,
+          error: toErrorMessage(cause),
+        });
+      }
+    })
+  );
+
+  if (settled.some((item) => item.status === "rejected")) {
+    console.warn("[collector-identity-assets] alchemy metadata promise rejection", {
+      rejectedCount: settled.filter((item) => item.status === "rejected").length,
+    });
   }
 
   return metadataByKey;
@@ -345,6 +554,7 @@ async function fetchCollectionMetadata(
 
 export function createCollectorIdentityAssetService(options: {
   reservoirApiKey?: string;
+  alchemyApiKey?: string;
   enableRemoteFetch?: boolean;
 } = {}): CollectorIdentityAssetService {
   const enableRemoteFetch = options.enableRemoteFetch ?? true;
@@ -366,10 +576,20 @@ export function createCollectorIdentityAssetService(options: {
       }
 
       const holdingsByAsset = Array.from(deduped.entries());
-      const [tokenMetadataByKey, collectionMetadataByContract] = enableRemoteFetch
+      const lookupInputs: TokenLookupInput[] = holdingsByAsset.map(
+        ([assetKey, holding]) => ({
+          assetKey,
+          chainNamespace: holding.chainNamespace,
+          contractAddress: holding.contractAddress,
+          tokenId: holding.tokenId,
+        })
+      );
+
+      const [tokenMetadataByKey, collectionMetadataByContract, alchemyMetadataByKey] =
+        enableRemoteFetch
         ? await Promise.all([
             fetchTokenMetadata(
-              holdingsByAsset.map(([, holding]) => holding),
+              lookupInputs,
               options.reservoirApiKey
             ),
             fetchCollectionMetadata(
@@ -382,12 +602,18 @@ export function createCollectorIdentityAssetService(options: {
               ),
               options.reservoirApiKey
             ),
+            fetchAlchemyTokenMetadata(lookupInputs, options.alchemyApiKey),
           ])
-        : [new Map<string, AssetMetadata>(), new Map<string, CollectionMetadata>()];
+        : [
+            new Map<string, AssetMetadata>(),
+            new Map<string, CollectionMetadata>(),
+            new Map<string, AssetMetadata>(),
+          ];
 
       const assets = holdingsByAsset
         .map(([assetKey, holding]) => {
           const tokenMetadata = tokenMetadataByKey.get(assetKey);
+          const alchemyMetadata = alchemyMetadataByKey.get(assetKey);
           const collectionMetadata = collectionMetadataByContract.get(
             toCollectionContractAddress(holding)
           );
@@ -402,13 +628,17 @@ export function createCollectorIdentityAssetService(options: {
             listedPriceEth: tokenMetadata?.listedPriceEth ?? null,
             highestOfferEth: tokenMetadata?.highestOfferEth ?? null,
             rarityRank: tokenMetadata?.rarityRank ?? null,
-            name: tokenMetadata?.name ?? null,
-            imageUrl: tokenMetadata?.imageUrl ?? null,
+            name: tokenMetadata?.name ?? alchemyMetadata?.name ?? null,
+            imageUrl: tokenMetadata?.imageUrl ?? alchemyMetadata?.imageUrl ?? null,
             collectionName:
-              tokenMetadata?.collectionName ?? collectionMetadata?.name ?? null,
+              tokenMetadata?.collectionName ??
+              collectionMetadata?.name ??
+              alchemyMetadata?.collectionName ??
+              null,
             collectionFloorPriceEth:
               tokenMetadata?.collectionFloorPriceEth ??
               collectionMetadata?.floorPriceEth ??
+              alchemyMetadata?.collectionFloorPriceEth ??
               null,
             topTraitFloor: tokenMetadata?.topTraitFloor ?? null,
             openseaUrl:

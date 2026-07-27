@@ -22,6 +22,7 @@ export function createDefaultCollectorIdentityService(): CollectorIdentityServic
   });
   const assetService = createCollectorIdentityAssetService({
     reservoirApiKey: env.RESERVOIR_API_KEY,
+    alchemyApiKey: env.ALCHEMY_API_KEY,
   });
   return createCollectorIdentityService({
     profileWallets,

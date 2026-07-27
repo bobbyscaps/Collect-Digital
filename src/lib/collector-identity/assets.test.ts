@@ -143,3 +143,124 @@ test("media URL normalization supports https, ipfs, arweave, and missing values"
   assert.equal(normalizeMediaUrl(""), null);
   assert.equal(normalizeMediaUrl(null), null);
 });
+
+test("asset service falls back to alchemy metadata when reservoir fails", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const warnings: unknown[] = [];
+  const urls: string[] = [];
+
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input.toString();
+    urls.push(url);
+
+    if (url.includes("/tokens/v7")) {
+      return new Response(
+        JSON.stringify({ error: { code: 429, message: "rate limited" } }),
+        { status: 200 }
+      );
+    }
+
+    if (url.includes("/collections/v7")) {
+      return new Response(
+        JSON.stringify({ error: { message: "metadata unavailable" } }),
+        { status: 200 }
+      );
+    }
+
+    if (url.includes("/getNFTMetadata")) {
+      return new Response(
+        JSON.stringify({
+          name: "Alchemy NFT",
+          image: {
+            cachedUrl: "https://cdn.alchemy.test/asset.png",
+          },
+          collection: {
+            name: "Alchemy Collection",
+          },
+          contract: {
+            openSeaMetadata: {
+              floorPrice: 1.75,
+              collectionName: "Alchemy Collection",
+            },
+          },
+        }),
+        { status: 200 }
+      );
+    }
+
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const service = createCollectorIdentityAssetService({
+      reservoirApiKey: "reservoir-test",
+      alchemyApiKey: "alchemy-test",
+    });
+    const assets = await service.buildAssets([
+      holding({
+        contractAddress: "0xabc0000000000000000000000000000000000001",
+        tokenId: "42",
+      }),
+    ]);
+
+    assert.equal(assets.length, 1);
+    assert.equal(
+      assets[0].assetId,
+      "eip155:0xabc0000000000000000000000000000000000001:42"
+    );
+    assert.equal(assets[0].contractAddress, "0xabc0000000000000000000000000000000000001");
+    assert.equal(assets[0].tokenId, "42");
+    assert.equal(assets[0].name, "Alchemy NFT");
+    assert.equal(assets[0].imageUrl, "https://cdn.alchemy.test/asset.png");
+    assert.equal(assets[0].collectionName, "Alchemy Collection");
+    assert.equal(assets[0].collectionFloorPriceEth, 1.75);
+
+    const alchemyUrl = urls.find((item) => item.includes("/getNFTMetadata"));
+    assert.ok(alchemyUrl);
+    assert.match(alchemyUrl ?? "", /eth-mainnet\.g\.alchemy\.com/);
+    assert.match(alchemyUrl ?? "", /contractAddress=0xabc0000000000000000000000000000000000001/);
+    assert.match(alchemyUrl ?? "", /tokenId=42/);
+
+    const warningText = JSON.stringify(warnings);
+    assert.match(warningText, /reservoir metadata API error/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});
+
+test("asset service does not query alchemy metadata for non-eip155 assets", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input.toString();
+    urls.push(url);
+    return new Response(JSON.stringify({}), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const service = createCollectorIdentityAssetService({
+      reservoirApiKey: "reservoir-test",
+      alchemyApiKey: "alchemy-test",
+    });
+    await service.buildAssets([
+      holding({
+        chainNamespace: "solana",
+        contractAddress: "So11111111111111111111111111111111111111112",
+        tokenId: "9",
+        collectionId: "solana:So11111111111111111111111111111111111111112",
+      }),
+    ]);
+
+    assert.equal(
+      urls.some((url) => url.includes("/getNFTMetadata")),
+      false
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
