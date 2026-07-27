@@ -41,6 +41,7 @@ test("asset service builds deterministic fallback assets without remote fetch", 
   assert.equal(assets[0].receivedAt, null);
   assert.equal(assets[0].listedPriceEth, null);
   assert.equal(assets[0].highestOfferEth, null);
+  assert.equal(assets[0].highestOfferScope, null);
   assert.equal(assets[0].rarityRank, null);
   assert.equal(assets[0].name, null);
   assert.equal(assets[0].collectionName, null);
@@ -116,6 +117,7 @@ test("asset service maps reservoir token and trait floor metadata", async () => 
     );
     assert.equal(assets[0].listedPriceEth, 1.1);
     assert.equal(assets[0].highestOfferEth, 0.95);
+    assert.equal(assets[0].highestOfferScope, "unknown");
     assert.equal(assets[0].rarityRank, 42);
     assert.equal(assets[0].collectionName, "Test Collection");
     assert.equal(assets[0].collectionFloorPriceEth, 1.2);
@@ -142,6 +144,147 @@ test("media URL normalization supports https, ipfs, arweave, and missing values"
   );
   assert.equal(normalizeMediaUrl(""), null);
   assert.equal(normalizeMediaUrl(null), null);
+});
+
+test("collection floor uses collection-level field only", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url.includes("/tokens/v7")) {
+      return new Response(
+        JSON.stringify({
+          tokens: [
+            {
+              token: {
+                chain: "ethereum",
+                contract: "0xABC0000000000000000000000000000000000000",
+                tokenId: "1",
+                name: "Token Name",
+                collection: {
+                  name: "Collection Name",
+                  floorAskPrice: { amount: { native: 2.5 } },
+                },
+              },
+              market: {
+                floorAsk: { price: { amount: { native: 0.4 } } },
+              },
+            },
+          ],
+        }),
+        { status: 200 }
+      );
+    }
+    if (url.includes("/collections/v7")) {
+      return new Response(JSON.stringify({ collections: [] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const service = createCollectorIdentityAssetService({
+      reservoirApiKey: "reservoir-test",
+      alchemyApiKey: "alchemy-test",
+    });
+    const assets = await service.buildAssets([holding({ tokenId: "1" })]);
+    assert.equal(assets[0].listedPriceEth, 0.4);
+    assert.equal(assets[0].collectionFloorPriceEth, 2.5);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("highest offer scope distinguishes token, collection, and trait offers", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url.includes("/tokens/v7")) {
+      return new Response(
+        JSON.stringify({
+          tokens: [
+            {
+              token: {
+                chain: "ethereum",
+                contract: "0xabc0000000000000000000000000000000000011",
+                tokenId: "1",
+                name: "Token Bid",
+              },
+              market: {
+                topBid: {
+                  tokenSetId: "token:0xabc0000000000000000000000000000000000011:1",
+                  price: { amount: { native: 0.1 } },
+                },
+              },
+            },
+            {
+              token: {
+                chain: "ethereum",
+                contract: "0xabc0000000000000000000000000000000000022",
+                tokenId: "2",
+                name: "Collection Bid",
+              },
+              market: {
+                topBid: {
+                  tokenSetId: "contract:0xabc0000000000000000000000000000000000022",
+                  price: { amount: { native: 0.2 } },
+                },
+              },
+            },
+            {
+              token: {
+                chain: "ethereum",
+                contract: "0xabc0000000000000000000000000000000000033",
+                tokenId: "3",
+                name: "Trait Bid",
+              },
+              market: {
+                topBid: {
+                  tokenSetId:
+                    "attribute:0xabc0000000000000000000000000000000000033:Background:Blue",
+                  price: { amount: { native: 0.3 } },
+                },
+              },
+            },
+          ],
+        }),
+        { status: 200 }
+      );
+    }
+    if (url.includes("/collections/v7")) {
+      return new Response(JSON.stringify({ collections: [] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const service = createCollectorIdentityAssetService({
+      reservoirApiKey: "reservoir-test",
+      alchemyApiKey: "alchemy-test",
+    });
+    const assets = await service.buildAssets([
+      holding({
+        contractAddress: "0xabc0000000000000000000000000000000000011",
+        tokenId: "1",
+        collectionId: "eip155:0xabc0000000000000000000000000000000000011",
+      }),
+      holding({
+        contractAddress: "0xabc0000000000000000000000000000000000022",
+        tokenId: "2",
+        collectionId: "eip155:0xabc0000000000000000000000000000000000022",
+      }),
+      holding({
+        contractAddress: "0xabc0000000000000000000000000000000000033",
+        tokenId: "3",
+        collectionId: "eip155:0xabc0000000000000000000000000000000000033",
+      }),
+    ]);
+
+    const byId = new Map(assets.map((asset) => [asset.tokenId, asset]));
+    assert.equal(byId.get("1")?.highestOfferScope, "token");
+    assert.equal(byId.get("2")?.highestOfferScope, "collection");
+    assert.equal(byId.get("3")?.highestOfferScope, "trait");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("asset service falls back to alchemy metadata when reservoir fails", async () => {
@@ -191,6 +334,15 @@ test("asset service falls back to alchemy metadata when reservoir fails", async 
         { status: 200 }
       );
     }
+    if (url.includes("/getFloorPrice")) {
+      return new Response(
+        JSON.stringify({
+          openSea: { floorPrice: 2.25, error: null },
+          looksRare: { floorPrice: null, error: null },
+        }),
+        { status: 200 }
+      );
+    }
 
     return new Response(JSON.stringify({}), { status: 404 });
   }) as typeof fetch;
@@ -217,7 +369,7 @@ test("asset service falls back to alchemy metadata when reservoir fails", async 
     assert.equal(assets[0].name, "Alchemy NFT");
     assert.equal(assets[0].imageUrl, "https://cdn.alchemy.test/asset.png");
     assert.equal(assets[0].collectionName, "Alchemy Collection");
-    assert.equal(assets[0].collectionFloorPriceEth, 1.75);
+    assert.equal(assets[0].collectionFloorPriceEth, 2.25);
 
     const alchemyUrl = urls.find((item) => item.includes("/getNFTMetadata"));
     assert.ok(alchemyUrl);
@@ -230,6 +382,51 @@ test("asset service falls back to alchemy metadata when reservoir fails", async 
   } finally {
     globalThis.fetch = originalFetch;
     console.warn = originalWarn;
+  }
+});
+
+test("alchemy getFloorPrice overrides stale contract metadata floor", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url.includes("/tokens/v7")) {
+      return new Response(JSON.stringify({ tokens: [] }), { status: 200 });
+    }
+    if (url.includes("/collections/v7")) {
+      return new Response(JSON.stringify({ collections: [] }), { status: 200 });
+    }
+    if (url.includes("/getNFTMetadata")) {
+      return new Response(
+        JSON.stringify({
+          name: "Stale Floor NFT",
+          image: { cachedUrl: "https://cdn.alchemy.test/stale.png" },
+          collection: { name: "Floor Collection" },
+          contract: { openSeaMetadata: { floorPrice: 0.5, collectionName: "Floor Collection" } },
+        }),
+        { status: 200 }
+      );
+    }
+    if (url.includes("/getFloorPrice")) {
+      return new Response(
+        JSON.stringify({
+          openSea: { floorPrice: 1.25, error: null },
+          looksRare: { floorPrice: null, error: "unsupported" },
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const service = createCollectorIdentityAssetService({
+      reservoirApiKey: "reservoir-test",
+      alchemyApiKey: "alchemy-test",
+    });
+    const assets = await service.buildAssets([holding({ tokenId: "9" })]);
+    assert.equal(assets[0].collectionFloorPriceEth, 1.25);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 

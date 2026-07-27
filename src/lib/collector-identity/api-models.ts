@@ -90,6 +90,7 @@ export interface CollectorIdentityAssetData {
   imageUrl: string | null;
   listedPriceEth: number | null;
   highestOfferEth: number | null;
+  highestOfferScope: "token" | "collection" | "trait" | "unknown" | null;
   rarityRank: number | null;
   collectionName: string | null;
   collectionFloorPriceEth: number | null;

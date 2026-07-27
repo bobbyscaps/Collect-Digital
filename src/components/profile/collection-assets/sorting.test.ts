@@ -19,6 +19,7 @@ function asset(
     receivedAt: null,
     listedPriceEth: null,
     highestOfferEth: null,
+    highestOfferScope: null,
     rarityRank: null,
     name: null,
     imageUrl: null,

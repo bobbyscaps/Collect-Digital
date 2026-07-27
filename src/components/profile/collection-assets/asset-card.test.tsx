@@ -15,6 +15,7 @@ function asset(overrides: Partial<CollectorIdentityAssetData> = {}): CollectorId
     receivedAt: "2026-01-01T00:00:00.000Z",
     listedPriceEth: 1.2,
     highestOfferEth: 1.1,
+    highestOfferScope: "token",
     rarityRank: 50,
     name: "Asset One",
     imageUrl: null,
@@ -40,6 +41,7 @@ test("AssetCard renders NFT image when image URL exists", () => {
 
   assert.match(html, /src="https:\/\/cdn\.example\.com\/image\.png"/);
   assert.match(html, /Highest Offer/);
+  assert.match(html, /Listed Price/);
 });
 
 test("AssetCard shows graceful fallback when image URL is missing", () => {

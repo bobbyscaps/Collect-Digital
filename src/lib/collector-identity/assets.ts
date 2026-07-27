@@ -11,6 +11,7 @@ type TraitFloor = NonNullable<CollectorIdentityAssetData["topTraitFloor"]>;
 interface AssetMetadata {
   listedPriceEth: number | null;
   highestOfferEth: number | null;
+  highestOfferScope: CollectorIdentityAssetData["highestOfferScope"];
   rarityRank: number | null;
   name: string | null;
   imageUrl: string | null;
@@ -203,13 +204,18 @@ function parseTopTraitFloor(attributes: unknown): TraitFloor | null {
     const floorPriceEth =
       asNumberAtPath(record, ["floorAskPrice", "amount", "native"]) ??
       asNumberAtPath(record, ["floorAsk", "price", "amount", "native"]) ??
+      asNumberAtPath(record, ["floorAskPrices", "0", "price", "amount", "native"]) ??
+      asNumberAtPath(record, ["floorAskPrices", "0", "amount", "native"]) ??
       asNumber(record.floorAskPrice) ??
       asNumber(record.floorSellValue);
     if (floorPriceEth == null) continue;
     if (topTrait && topTrait.floorPriceEth >= floorPriceEth) continue;
 
     topTrait = Object.freeze({
-      traitType: asString(record.key) ?? asString(record.trait_type),
+      traitType:
+        asString(record.key) ??
+        asString(record.traitType) ??
+        asString(record.trait_type),
       traitValue:
         asString(record.value) ??
         asString(record.valueString) ??
@@ -219,6 +225,33 @@ function parseTopTraitFloor(attributes: unknown): TraitFloor | null {
   }
 
   return topTrait;
+}
+
+function classifyBidScope(topBid: Record<string, unknown> | null) {
+  if (!topBid) return null;
+
+  const tokenSetId = asString(topBid.tokenSetId);
+  if (tokenSetId) {
+    if (tokenSetId.startsWith("token:")) return "token" as const;
+    if (tokenSetId.startsWith("attribute:")) return "trait" as const;
+    if (tokenSetId.startsWith("collection:") || tokenSetId.startsWith("contract:")) {
+      return "collection" as const;
+    }
+  }
+
+  const kind = asString(topBid.kind)?.toLowerCase();
+  if (kind === "token") return "token" as const;
+  if (kind === "attribute" || kind === "trait") return "trait" as const;
+  if (kind === "collection" || kind === "contract") return "collection" as const;
+
+  const criteriaKind = asStringAtPath(topBid, ["criteria", "kind"])?.toLowerCase();
+  if (criteriaKind === "token") return "token" as const;
+  if (criteriaKind === "attribute" || criteriaKind === "trait") return "trait" as const;
+  if (criteriaKind === "collection" || criteriaKind === "contract") {
+    return "collection" as const;
+  }
+
+  return "unknown" as const;
 }
 
 function parseTokenMetadata(entry: unknown): {
@@ -243,19 +276,21 @@ function parseTokenMetadata(entry: unknown): {
 
   const collection = asRecord(token.collection);
   const market = asRecord(entryRecord?.market);
+  const topBid = asRecord(market?.topBid) ?? asRecord(token.topBid);
   const listedPriceEth =
     asNumberAtPath(market, ["floorAsk", "price", "amount", "native"]) ??
+    asNumberAtPath(token, ["floorAsk", "price", "amount", "native"]) ??
     asNumberAtPath(token, ["floorAskPrice", "amount", "native"]) ??
     null;
   const highestOfferEth =
-    asNumberAtPath(market, ["topBid", "price", "amount", "native"]) ??
-    asNumberAtPath(token, ["topBid", "price", "amount", "native"]) ??
+    asNumberAtPath(topBid, ["price", "amount", "native"]) ??
     null;
   const collectionFloor =
     asNumberAtPath(collection, ["floorAskPrice", "amount", "native"]) ??
-    listedPriceEth ??
-    asNumberAtPath(token, ["floorAskPrice", "amount", "native"]) ??
-    asNumberAtPath(token, ["lastSale", "price", "amount", "native"]);
+    asNumberAtPath(collection, ["floorAsk", "price", "amount", "native"]) ??
+    asNumberAtPath(collection, ["floorSellValue"]) ??
+    asNumberAtPath(collection, ["floorPrice"]) ??
+    null;
   const rarityRank =
     asNumber(token.rarityRank) ??
     asNumberAtPath(token, ["rarity", "rank"]) ??
@@ -273,6 +308,7 @@ function parseTokenMetadata(entry: unknown): {
     metadata: {
       listedPriceEth,
       highestOfferEth,
+      highestOfferScope: classifyBidScope(topBid),
       rarityRank,
       name: asString(token.name),
       imageUrl: normalizeMediaUrl(
@@ -331,6 +367,7 @@ function parseAlchemyTokenMetadata(payload: unknown): {
     metadata: {
       listedPriceEth: null,
       highestOfferEth: null,
+      highestOfferScope: null,
       rarityRank: null,
       name,
       imageUrl: selectAlchemyImage(record),
@@ -523,6 +560,90 @@ async function fetchAlchemyTokenMetadata(
   return metadataByKey;
 }
 
+async function fetchAlchemyCollectionFloorPrices(
+  collectionContracts: readonly string[],
+  apiKey?: string
+): Promise<Map<string, number | null>> {
+  const floorsByContract = new Map<string, number | null>();
+  if (!apiKey) return floorsByContract;
+
+  const settled = await Promise.allSettled(
+    collectionContracts.map(async (contractAddress) => {
+      const url = new URL(
+        `https://${ALCHEMY_ETHEREUM_MAINNET_NETWORK}.g.alchemy.com/nft/v3/${apiKey}/getFloorPrice`
+      );
+      url.searchParams.set("contractAddress", contractAddress);
+
+      try {
+        const response = await fetch(url.toString(), {
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          console.warn(
+            "[collector-identity-assets] alchemy collection floor HTTP failure",
+            {
+              status: response.status,
+              contractAddress,
+            }
+          );
+          floorsByContract.set(contractAddress, null);
+          return;
+        }
+
+        const payload = (await response.json()) as unknown;
+        const providerError = resolveProviderError(payload);
+        if (providerError) {
+          console.warn(
+            "[collector-identity-assets] alchemy collection floor API error",
+            {
+              contractAddress,
+              error: providerError,
+            }
+          );
+          floorsByContract.set(contractAddress, null);
+          return;
+        }
+
+        const openSeaError = asStringAtPath(asRecord(payload), ["openSea", "error"]);
+        if (openSeaError) {
+          console.warn(
+            "[collector-identity-assets] alchemy collection floor provider error",
+            {
+              contractAddress,
+              error: openSeaError,
+            }
+          );
+          floorsByContract.set(contractAddress, null);
+          return;
+        }
+
+        floorsByContract.set(
+          contractAddress,
+          asNumberAtPath(asRecord(payload), ["openSea", "floorPrice"])
+        );
+      } catch (cause) {
+        console.warn(
+          "[collector-identity-assets] alchemy collection floor request failure",
+          {
+            contractAddress,
+            error: toErrorMessage(cause),
+          }
+        );
+        floorsByContract.set(contractAddress, null);
+      }
+    })
+  );
+
+  if (settled.some((item) => item.status === "rejected")) {
+    console.warn("[collector-identity-assets] alchemy collection floor rejection", {
+      rejectedCount: settled.filter((item) => item.status === "rejected").length,
+    });
+  }
+
+  return floorsByContract;
+}
+
 async function fetchCollectionMetadata(
   collectionContracts: readonly string[],
   apiKey?: string
@@ -576,6 +697,11 @@ export function createCollectorIdentityAssetService(options: {
       }
 
       const holdingsByAsset = Array.from(deduped.entries());
+      const collectionContracts = Array.from(
+        new Set(
+          holdingsByAsset.map(([, holding]) => toCollectionContractAddress(holding))
+        )
+      );
       const lookupInputs: TokenLookupInput[] = holdingsByAsset.map(
         ([assetKey, holding]) => ({
           assetKey,
@@ -585,29 +711,32 @@ export function createCollectorIdentityAssetService(options: {
         })
       );
 
-      const [tokenMetadataByKey, collectionMetadataByContract, alchemyMetadataByKey] =
-        enableRemoteFetch
+      const [
+        tokenMetadataByKey,
+        collectionMetadataByContract,
+        alchemyMetadataByKey,
+        alchemyCollectionFloorByContract,
+      ] = enableRemoteFetch
         ? await Promise.all([
             fetchTokenMetadata(
               lookupInputs,
               options.reservoirApiKey
             ),
             fetchCollectionMetadata(
-              Array.from(
-                new Set(
-                  holdingsByAsset.map(([, holding]) =>
-                    toCollectionContractAddress(holding)
-                  )
-                )
-              ),
+              collectionContracts,
               options.reservoirApiKey
             ),
             fetchAlchemyTokenMetadata(lookupInputs, options.alchemyApiKey),
+            fetchAlchemyCollectionFloorPrices(
+              collectionContracts.filter((address) => address.startsWith("0x")),
+              options.alchemyApiKey
+            ),
           ])
         : [
             new Map<string, AssetMetadata>(),
             new Map<string, CollectionMetadata>(),
             new Map<string, AssetMetadata>(),
+            new Map<string, number | null>(),
           ];
 
       const assets = holdingsByAsset
@@ -615,6 +744,9 @@ export function createCollectorIdentityAssetService(options: {
           const tokenMetadata = tokenMetadataByKey.get(assetKey);
           const alchemyMetadata = alchemyMetadataByKey.get(assetKey);
           const collectionMetadata = collectionMetadataByContract.get(
+            toCollectionContractAddress(holding)
+          );
+          const alchemyCollectionFloor = alchemyCollectionFloorByContract.get(
             toCollectionContractAddress(holding)
           );
           const tokenId = normalizeTokenId(holding.tokenId);
@@ -627,6 +759,7 @@ export function createCollectorIdentityAssetService(options: {
             receivedAt: holding.acquiredAt,
             listedPriceEth: tokenMetadata?.listedPriceEth ?? null,
             highestOfferEth: tokenMetadata?.highestOfferEth ?? null,
+            highestOfferScope: tokenMetadata?.highestOfferScope ?? null,
             rarityRank: tokenMetadata?.rarityRank ?? null,
             name: tokenMetadata?.name ?? alchemyMetadata?.name ?? null,
             imageUrl: tokenMetadata?.imageUrl ?? alchemyMetadata?.imageUrl ?? null,
@@ -636,6 +769,7 @@ export function createCollectorIdentityAssetService(options: {
               alchemyMetadata?.collectionName ??
               null,
             collectionFloorPriceEth:
+              alchemyCollectionFloor ??
               tokenMetadata?.collectionFloorPriceEth ??
               collectionMetadata?.floorPriceEth ??
               alchemyMetadata?.collectionFloorPriceEth ??

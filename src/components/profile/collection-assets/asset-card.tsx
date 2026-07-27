@@ -34,6 +34,14 @@ function traitLabel(asset: CollectorIdentityAssetData) {
   return pieces.length > 0 ? pieces.join(": ") : "Available";
 }
 
+function offerLabel(scope: CollectorIdentityAssetData["highestOfferScope"]) {
+  if (scope === "token") return "Token";
+  if (scope === "collection") return "Collection";
+  if (scope === "trait") return "Trait";
+  if (scope === "unknown") return "Market";
+  return null;
+}
+
 export function AssetCard({
   asset,
   cardSize,
@@ -91,6 +99,12 @@ export function AssetCard({
             </dd>
           </div>
           <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Listed Price</dt>
+            <dd className="text-right font-medium">
+              {formatEth(asset.listedPriceEth)}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-2">
             <dt className="text-muted-foreground">Top Trait Floor</dt>
             <dd className="max-w-[65%] truncate text-right font-medium">
               {traitLabel(asset)}
@@ -99,7 +113,13 @@ export function AssetCard({
           <div className="flex items-center justify-between gap-2">
             <dt className="text-muted-foreground">Highest Offer</dt>
             <dd className="text-right font-medium">
-              {formatEth(asset.highestOfferEth)}
+              {asset.highestOfferEth != null
+                ? `${formatEth(asset.highestOfferEth)}${
+                    offerLabel(asset.highestOfferScope)
+                      ? ` (${offerLabel(asset.highestOfferScope)})`
+                      : ""
+                  }`
+                : "Unavailable"}
             </dd>
           </div>
           <div className="flex items-center justify-between gap-2">
