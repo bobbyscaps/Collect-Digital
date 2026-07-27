@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { ExternalLink, ImageOff } from "lucide-react";
 
 import type { CollectorIdentityAssetData } from "@/lib/collector-identity/api-models";

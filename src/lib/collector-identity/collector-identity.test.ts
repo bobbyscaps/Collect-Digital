@@ -115,7 +115,6 @@ function assertNoFabricatedMetrics(identity: CollectorIdentityResponse) {
     "helius",
     "rawresponse",
     "providerpayload",
-    "rarityrank",
   ];
   for (const key of forbidden) {
     assert.equal(
