@@ -55,6 +55,7 @@ export function AssetCard({
         )}
       >
         {asset.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={asset.imageUrl}
             alt={asset.name ?? `Token #${asset.tokenId}`}
