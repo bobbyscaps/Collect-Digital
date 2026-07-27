@@ -192,5 +192,5 @@ test("loading and error state markers are rendered in profile header source", ()
   );
   assert.match(source, /data-testid="sync-collectibles-action"/);
   assert.match(source, /data-testid="sync-collectibles-error"/);
-  assert.match(source, /Syncing\.\.\./);
+  assert.match(source, /getSyncCollectiblesButtonLabel\(syncingInventory\)/);
 });
