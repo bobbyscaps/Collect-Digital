@@ -42,6 +42,7 @@ import {
   assertWalletEligibleForInventorySync,
   createWalletInventoryService,
 } from "@/lib/wallet-inventory/service";
+import { resolveInventoryStatus } from "@/lib/collector-profile/domain";
 
 function createStaticProvider(
   namespace: "eip155" | "solana",
@@ -622,6 +623,39 @@ test("interrupted sync preserves previous inventory and skips stale cleanup", as
   assert.ok(latest?.durationMs != null);
 });
 
+test("sync failure does not mark inventory ready", async () => {
+  const { profileWallets, wallet } = await createVerifiedWallet(undefined, {
+    address: "0xNotReadyOnFailure",
+  });
+  const inventory = createInMemoryWalletInventoryRepository();
+  const failing: WalletInventoryProvider = {
+    providerKey: "failing",
+    chainNamespace: "eip155",
+    async fetchHoldings() {
+      throw new Error("upstream unavailable");
+    },
+  };
+  const service = createWalletInventoryService({
+    profileWallets,
+    inventory,
+    providers: createWalletInventoryProviderRegistry([failing]),
+  });
+
+  await assert.rejects(
+    () => service.syncVerifiedWalletInventory({ walletId: wallet.id }),
+    InventorySyncFailedError
+  );
+
+  const latestSuccessful = await inventory.findLatestSuccessfulSync(wallet.id);
+  assert.equal(latestSuccessful, null);
+  assert.equal(
+    resolveInventoryStatus([
+      { walletId: wallet.id, lastSuccessfulSyncAt: null },
+    ]),
+    "unsynced"
+  );
+});
+
 test("replace failure rolls back and does not delete prior holdings", async () => {
   const inventory = createInMemoryWalletInventoryRepository();
   await inventory.replaceWalletInventory({
@@ -703,6 +737,79 @@ test("empty wallet sync clears previous holdings", async () => {
   assert.equal(result.removedCount, 1);
   assert.equal((await emptied.listHoldingsByWallet(wallet.id)).length, 0);
   assert.equal(result.sync.syncStatus, "success");
+});
+
+test("successful empty sync differs from provider failure semantics", async () => {
+  const { profileWallets, wallet } = await createVerifiedWallet(undefined, {
+    address: "0xEmptyVsFailure",
+  });
+  const inventory = createInMemoryWalletInventoryRepository();
+
+  const seededService = createWalletInventoryService({
+    profileWallets,
+    inventory,
+    providers: createWalletInventoryProviderRegistry([
+      createStaticProvider("eip155", [
+        item({ contractAddress: "0xSeeded", tokenId: "1" }),
+      ]),
+    ]),
+  });
+  await seededService.syncVerifiedWalletInventory({ walletId: wallet.id });
+  assert.equal((await inventory.listHoldingsByWallet(wallet.id)).length, 1);
+
+  const emptySuccessService = createWalletInventoryService({
+    profileWallets,
+    inventory,
+    providers: createWalletInventoryProviderRegistry([
+      createStaticProvider("eip155", []),
+    ]),
+  });
+  const emptyResult = await emptySuccessService.syncVerifiedWalletInventory({
+    walletId: wallet.id,
+  });
+  assert.equal(emptyResult.sync.syncStatus, "success");
+  assert.equal(emptyResult.holdings.length, 0);
+  assert.equal((await inventory.listHoldingsByWallet(wallet.id)).length, 0);
+
+  await inventory.replaceWalletInventory({
+    walletId: wallet.id,
+    holdings: [
+      {
+        walletId: wallet.id,
+        chainNamespace: "eip155",
+        contractAddress: "0xRestored",
+        tokenId: "2",
+        assetStandard: "erc721",
+        quantity: "1",
+        collectionId: "eip155:0xrestored",
+        ownerAddress: "0xowner",
+        acquiredAt: null,
+        lastSeenAt: "2026-07-25T12:00:00.000Z",
+        sourceProvider: "seed",
+      },
+    ],
+  });
+  assert.equal((await inventory.listHoldingsByWallet(wallet.id)).length, 1);
+
+  const failingService = createWalletInventoryService({
+    profileWallets,
+    inventory,
+    providers: createWalletInventoryProviderRegistry([
+      {
+        providerKey: "failing",
+        chainNamespace: "eip155",
+        async fetchHoldings() {
+          throw new Error("pagination failure");
+        },
+      },
+    ]),
+  });
+
+  await assert.rejects(
+    () => failingService.syncVerifiedWalletInventory({ walletId: wallet.id }),
+    InventorySyncFailedError
+  );
+  assert.equal((await inventory.listHoldingsByWallet(wallet.id)).length, 1);
 });
 
 test("Solana verified wallet sync uses Solana adapter path", async () => {
