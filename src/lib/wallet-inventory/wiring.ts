@@ -1,4 +1,5 @@
 import { createEvmInventoryProvider } from "@/lib/wallet-inventory/adapters/evm";
+import { createAlchemyEvmRawHoldingsFetcher } from "@/lib/wallet-inventory/adapters/alchemy-evm-fetcher";
 import { createSolanaInventoryProvider } from "@/lib/wallet-inventory/adapters/solana";
 import {
   createWalletInventoryProviderRegistry,
@@ -14,13 +15,16 @@ import type { ProfileWalletRepository } from "@/lib/profile-wallets/repository";
 import type { WalletInventoryRepository } from "@/lib/wallet-inventory/repository";
 
 /**
- * Foundation inventory providers (PR5 stubs).
- * Return empty complete inventories until live Alchemy/Helius adapters are wired.
- * Must never fabricate holdings.
+ * Production inventory providers.
+ * - EVM uses live Alchemy Ethereum mainnet holdings.
+ * - Solana remains a stub until a live Solana adapter is wired.
  */
 export function createDefaultInventoryProviderRegistry(): WalletInventoryProviderRegistry {
   return createWalletInventoryProviderRegistry([
-    createEvmInventoryProvider({ providerKey: "evm_inventory" }),
+    createEvmInventoryProvider({
+      providerKey: "evm_inventory",
+      fetchRawHoldings: createAlchemyEvmRawHoldingsFetcher(),
+    }),
     createSolanaInventoryProvider({ providerKey: "solana_inventory" }),
   ]);
 }

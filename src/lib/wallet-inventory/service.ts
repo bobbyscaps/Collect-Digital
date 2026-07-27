@@ -57,6 +57,23 @@ export interface CreateWalletInventoryServiceOptions {
   providers: WalletInventoryProviderRegistry;
 }
 
+function redactWalletAddress(address: string): string {
+  const cleaned = address.trim();
+  if (cleaned.length <= 12) return cleaned;
+  return `${cleaned.slice(0, 6)}...${cleaned.slice(-4)}`;
+}
+
+function resolveInventoryNetwork(chainNamespace: string): string {
+  if (chainNamespace === "eip155") {
+    // Current EVM inventory sync is explicitly Ethereum mainnet only.
+    return "eth-mainnet";
+  }
+  if (chainNamespace === "solana") {
+    return "solana";
+  }
+  return chainNamespace;
+}
+
 /**
  * Enforces that only verified, connected wallets may sync inventory.
  * Returns explicit domain errors for pending/revoked/disconnected states.
@@ -126,12 +143,17 @@ export function createWalletInventoryService(
         syncStartedAt: startedAt,
       });
 
+      let rawItemCount: number | null = null;
+      let normalizedItemCount: number | null = null;
+      let persistedItemCount: number | null = null;
+
       try {
         // Fetch must complete fully or throw. Never cleanup on incomplete fetch.
         const fetchResult = await provider.fetchHoldings({
           chainNamespace: wallet.chainNamespace,
           ownerAddress: wallet.address,
         });
+        rawItemCount = fetchResult.items.length;
 
         const lastSeenAt = (request.now ?? new Date()).toISOString();
         const normalized = normalizeProviderHoldings(fetchResult.items, {
@@ -139,12 +161,14 @@ export function createWalletInventoryService(
           sourceProvider: fetchResult.provider,
           lastSeenAt,
         });
+        normalizedItemCount = normalized.length;
 
         // Atomic snapshot apply: no partial inventory replacement.
         const replaced = await options.inventory.replaceWalletInventory({
           walletId: wallet.id,
           holdings: normalized,
         });
+        persistedItemCount = replaced.holdings.length;
 
         const completedAt = (request.now ?? new Date()).toISOString();
         const completed = await options.inventory.completeSync({
@@ -152,6 +176,15 @@ export function createWalletInventoryService(
           syncStatus: "success",
           syncCompletedAt: completedAt,
           errorMessage: null,
+        });
+
+        console.info("[wallet-inventory-sync]", {
+          providerKey: provider.providerKey,
+          network: resolveInventoryNetwork(wallet.chainNamespace),
+          walletAddress: redactWalletAddress(wallet.address),
+          rawItemCount,
+          normalizedItemCount,
+          persistedItemCount,
         });
 
         return {
@@ -173,6 +206,16 @@ export function createWalletInventoryService(
           syncStatus: "failure",
           syncCompletedAt: (request.now ?? new Date()).toISOString(),
           errorMessage: message,
+        });
+
+        console.error("[wallet-inventory-sync]", {
+          providerKey: provider.providerKey,
+          network: resolveInventoryNetwork(wallet.chainNamespace),
+          walletAddress: redactWalletAddress(wallet.address),
+          rawItemCount,
+          normalizedItemCount,
+          persistedItemCount,
+          error: message,
         });
 
         if (error instanceof InventorySyncFailedError) {
