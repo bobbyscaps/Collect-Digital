@@ -203,6 +203,7 @@ test("loading and error state markers are rendered in profile header source", ()
   assert.match(source, /label="Latest Sync"/);
   assert.match(source, /footer=\{/);
   assert.match(source, /data-testid="sync-collectibles-action"/);
-  assert.match(source, /data-testid="sync-collectibles-error"/);
+  assert.match(source, /sync-collectibles-error/);
+  assert.match(source, /sync-collectibles-success/);
   assert.match(source, /getSyncCollectiblesButtonLabel\(syncingInventory\)/);
 });
