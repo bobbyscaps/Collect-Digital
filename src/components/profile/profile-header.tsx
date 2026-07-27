@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePrivy } from "@privy-io/react-auth";
 import {
   Boxes,
   Clock3,
@@ -21,27 +22,39 @@ import {
   isWalletRegistryUnavailable,
 } from "@/components/collector-identity/no-verified-wallets";
 import { NoVerifiedWalletsEmptyState } from "@/components/collector-identity/no-verified-wallets-empty-state";
+import {
+  buildManualInventorySyncFeedback,
+  canShowSyncCollectiblesAction,
+  getSyncCollectiblesButtonLabel,
+  getVerifiedWalletIdsForSync,
+  isSyncCollectiblesButtonDisabled,
+  type ManualInventorySyncStatus,
+  syncVerifiedWalletInventories,
+} from "@/components/profile/manual-inventory-sync";
 import { useProfile } from "./profile-context";
 
 function HeaderStat({
   icon: Icon,
   label,
   value,
+  footer,
 }: {
   icon: typeof Wallet;
   label: string;
   value: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
       <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-violet-500/20 to-sky-400/20 text-indigo-300">
         <Icon className="h-4 w-4" />
       </span>
-      <div className="leading-tight">
+      <div className="min-w-0 leading-tight">
         <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
           {label}
         </p>
         <p className="text-sm font-semibold">{value}</p>
+        {footer ? <div className="mt-1.5">{footer}</div> : null}
       </div>
     </div>
   );
@@ -67,10 +80,15 @@ export function ProfileHeader() {
     identityError,
     refreshIdentity,
   } = useProfile();
+  const { getAccessToken } = usePrivy();
   const { requireLogin } = useGatedLogin();
   const [following, setFollowing] = useState(false);
   const [verificationSessionActive, setVerificationSessionActive] =
     useState(false);
+  const [syncingInventory, setSyncingInventory] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<ManualInventorySyncStatus | null>(
+    null
+  );
 
   const handleFollow = () => {
     if (!viewerAuthenticated) {
@@ -87,8 +105,62 @@ export function ProfileHeader() {
   const verifiedCount = identity?.wallets.data?.verifiedWalletCount ?? null;
   const hasVerifiedWallet =
     typeof verifiedCount === "number" ? verifiedCount > 0 : false;
+  const verifiedWalletIds = getVerifiedWalletIdsForSync(identity);
   const noVerifiedWallets = hasNoVerifiedWallets(identity);
   const registryUnavailable = isWalletRegistryUnavailable(identity);
+  const showSyncCollectiblesAction = canShowSyncCollectiblesAction({
+    isOwner,
+    verifiedWalletIds,
+    registryUnavailable,
+    verificationSessionActive,
+  });
+
+  const handleManualInventorySync = async () => {
+    if (
+      syncingInventory ||
+      !showSyncCollectiblesAction ||
+      verifiedWalletIds.length === 0
+    ) {
+      return;
+    }
+
+    setSyncingInventory(true);
+    setSyncStatus(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Authentication required to synchronize collectibles.");
+      }
+
+      const result = await syncVerifiedWalletInventories({
+        accessToken,
+        walletIds: verifiedWalletIds,
+      });
+      const feedback = buildManualInventorySyncFeedback(result);
+
+      setSyncStatus(feedback.status);
+
+      if (feedback.shouldRefreshIdentity) {
+        refreshIdentity();
+      }
+    } catch (cause) {
+      setSyncStatus({
+        kind: "error",
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "Unable to synchronize collectibles right now.",
+        details: {
+          attempted: verifiedWalletIds.length,
+          succeeded: 0,
+          failed: verifiedWalletIds.length,
+        },
+      });
+    } finally {
+      setSyncingInventory(false);
+    }
+  };
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
@@ -240,6 +312,39 @@ export function ProfileHeader() {
                     identity?.inventory.lastUpdatedAt ??
                       identity?.wallets.data?.latestSuccessfulSync
                   )
+            }
+            footer={
+              showSyncCollectiblesAction ? (
+                <div className="space-y-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-white/15 bg-white/5 px-2.5 text-[11px] hover:bg-white/10"
+                    data-testid="sync-collectibles-action"
+                    disabled={isSyncCollectiblesButtonDisabled(syncingInventory)}
+                    onClick={() => void handleManualInventorySync()}
+                  >
+                    {getSyncCollectiblesButtonLabel(syncingInventory)}
+                  </Button>
+                  {syncStatus && (
+                    <p
+                      className={
+                        syncStatus.kind === "error"
+                          ? "text-[11px] text-rose-200/90"
+                          : "text-[11px] text-emerald-300/90"
+                      }
+                      data-testid={
+                        syncStatus.kind === "error"
+                          ? "sync-collectibles-error"
+                          : "sync-collectibles-success"
+                      }
+                    >
+                      {syncStatus.message}
+                    </p>
+                  )}
+                </div>
+              ) : null
             }
           />
         </div>
