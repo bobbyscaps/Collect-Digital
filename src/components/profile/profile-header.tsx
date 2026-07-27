@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePrivy } from "@privy-io/react-auth";
 import {
   Boxes,
   Clock3,
@@ -21,6 +22,14 @@ import {
   isWalletRegistryUnavailable,
 } from "@/components/collector-identity/no-verified-wallets";
 import { NoVerifiedWalletsEmptyState } from "@/components/collector-identity/no-verified-wallets-empty-state";
+import {
+  buildManualInventorySyncFeedback,
+  canShowSyncCollectiblesAction,
+  getSyncCollectiblesButtonLabel,
+  getVerifiedWalletIdsForSync,
+  isSyncCollectiblesButtonDisabled,
+  syncVerifiedWalletInventories,
+} from "@/components/profile/manual-inventory-sync";
 import { useProfile } from "./profile-context";
 
 function HeaderStat({
@@ -67,10 +76,16 @@ export function ProfileHeader() {
     identityError,
     refreshIdentity,
   } = useProfile();
+  const { getAccessToken } = usePrivy();
   const { requireLogin } = useGatedLogin();
   const [following, setFollowing] = useState(false);
   const [verificationSessionActive, setVerificationSessionActive] =
     useState(false);
+  const [syncingInventory, setSyncingInventory] = useState(false);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(
+    null
+  );
+  const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
 
   const handleFollow = () => {
     if (!viewerAuthenticated) {
@@ -87,8 +102,57 @@ export function ProfileHeader() {
   const verifiedCount = identity?.wallets.data?.verifiedWalletCount ?? null;
   const hasVerifiedWallet =
     typeof verifiedCount === "number" ? verifiedCount > 0 : false;
+  const verifiedWalletIds = getVerifiedWalletIdsForSync(identity);
   const noVerifiedWallets = hasNoVerifiedWallets(identity);
   const registryUnavailable = isWalletRegistryUnavailable(identity);
+  const showSyncCollectiblesAction = canShowSyncCollectiblesAction({
+    isOwner,
+    verifiedWalletIds,
+    registryUnavailable,
+    verificationSessionActive,
+  });
+
+  const handleManualInventorySync = async () => {
+    if (
+      syncingInventory ||
+      !showSyncCollectiblesAction ||
+      verifiedWalletIds.length === 0
+    ) {
+      return;
+    }
+
+    setSyncingInventory(true);
+    setSyncSuccessMessage(null);
+    setSyncErrorMessage(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Authentication required to synchronize collectibles.");
+      }
+
+      const result = await syncVerifiedWalletInventories({
+        accessToken,
+        walletIds: verifiedWalletIds,
+      });
+      const feedback = buildManualInventorySyncFeedback(result);
+
+      setSyncSuccessMessage(feedback.successMessage);
+      setSyncErrorMessage(feedback.errorMessage);
+
+      if (feedback.shouldRefreshIdentity) {
+        refreshIdentity();
+      }
+    } catch (cause) {
+      setSyncErrorMessage(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to synchronize collectibles right now."
+      );
+    } finally {
+      setSyncingInventory(false);
+    }
+  };
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
@@ -243,6 +307,37 @@ export function ProfileHeader() {
             }
           />
         </div>
+
+        {showSyncCollectiblesAction && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="border-white/15 bg-white/5 hover:bg-white/10"
+              data-testid="sync-collectibles-action"
+              disabled={isSyncCollectiblesButtonDisabled(syncingInventory)}
+              onClick={() => void handleManualInventorySync()}
+            >
+              {getSyncCollectiblesButtonLabel(syncingInventory)}
+            </Button>
+            {syncSuccessMessage && (
+              <p
+                className="text-xs text-emerald-300/90"
+                data-testid="sync-collectibles-success"
+              >
+                {syncSuccessMessage}
+              </p>
+            )}
+            {syncErrorMessage && (
+              <p
+                className="text-xs text-rose-200/90"
+                data-testid="sync-collectibles-error"
+              >
+                {syncErrorMessage}
+              </p>
+            )}
+          </div>
+        )}
 
         {isOwner && (
           <div className="mt-4 space-y-3">
