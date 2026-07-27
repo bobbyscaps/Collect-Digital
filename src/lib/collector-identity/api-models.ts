@@ -85,8 +85,12 @@ export interface CollectorIdentityAssetData {
   chainNamespace: WalletChainNamespace;
   contractAddress: string;
   tokenId: string;
+  receivedAt: string | null;
   name: string | null;
   imageUrl: string | null;
+  listedPriceEth: number | null;
+  highestOfferEth: number | null;
+  rarityRank: number | null;
   collectionName: string | null;
   collectionFloorPriceEth: number | null;
   topTraitFloor: CollectorIdentityAssetTraitFloorData | null;

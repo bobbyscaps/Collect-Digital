@@ -8,6 +8,9 @@ const TOKEN_BATCH_SIZE = 20;
 type TraitFloor = NonNullable<CollectorIdentityAssetData["topTraitFloor"]>;
 
 interface AssetMetadata {
+  listedPriceEth: number | null;
+  highestOfferEth: number | null;
+  rarityRank: number | null;
   name: string | null;
   imageUrl: string | null;
   collectionName: string | null;
@@ -45,6 +48,29 @@ function normalizeTokenId(tokenId: string) {
     }
   }
   return value;
+}
+
+export function normalizeMediaUrl(url: string | null): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("data:")) return trimmed;
+  if (trimmed.startsWith("//")) return `https:${trimmed}`;
+  if (trimmed.startsWith("/ipfs/")) return `https://ipfs.io${trimmed}`;
+  if (trimmed.startsWith("http://")) return `https://${trimmed.slice("http://".length)}`;
+  if (trimmed.startsWith("https://")) return trimmed;
+  if (trimmed.startsWith("ipfs://")) {
+    const value = trimmed.slice("ipfs://".length).replace(/^ipfs\//i, "");
+    return value ? `https://ipfs.io/ipfs/${value}` : null;
+  }
+  if (trimmed.startsWith("ar://")) {
+    const value = trimmed.slice("ar://".length);
+    return value ? `https://arweave.net/${value}` : null;
+  }
+  if (/^Qm[1-9A-HJ-NP-Za-km-z]{44}(\/.*)?$/.test(trimmed)) {
+    return `https://ipfs.io/ipfs/${trimmed}`;
+  }
+  return null;
 }
 
 function toCollectionContractAddress(holding: NormalizedHolding) {
@@ -185,11 +211,24 @@ function parseTokenMetadata(entry: unknown): {
 
   const collection = asRecord(token.collection);
   const market = asRecord(entryRecord?.market);
-  const collectionFloor =
-    asNumberAtPath(collection, ["floorAskPrice", "amount", "native"]) ??
+  const listedPriceEth =
     asNumberAtPath(market, ["floorAsk", "price", "amount", "native"]) ??
     asNumberAtPath(token, ["floorAskPrice", "amount", "native"]) ??
+    null;
+  const highestOfferEth =
+    asNumberAtPath(market, ["topBid", "price", "amount", "native"]) ??
+    asNumberAtPath(token, ["topBid", "price", "amount", "native"]) ??
+    null;
+  const collectionFloor =
+    asNumberAtPath(collection, ["floorAskPrice", "amount", "native"]) ??
+    listedPriceEth ??
+    asNumberAtPath(token, ["floorAskPrice", "amount", "native"]) ??
     asNumberAtPath(token, ["lastSale", "price", "amount", "native"]);
+  const rarityRank =
+    asNumber(token.rarityRank) ??
+    asNumberAtPath(token, ["rarity", "rank"]) ??
+    asNumberAtPath(token, ["tokenRarity", "rank"]) ??
+    null;
 
   const chainNamespace = chainName === "solana" ? "solana" : "eip155";
   const tokenKey = `${chainNamespace}:${normalizeContractForAssetKey(
@@ -200,12 +239,19 @@ function parseTokenMetadata(entry: unknown): {
   return {
     tokenKey,
     metadata: {
+      listedPriceEth,
+      highestOfferEth,
+      rarityRank,
       name: asString(token.name),
-      imageUrl:
+      imageUrl: normalizeMediaUrl(
         asString(token.image) ??
-        asString(token.imageSmall) ??
-        asString(token.imageUrl) ??
-        asString(token.media),
+          asString(token.imageSmall) ??
+          asString(token.imageUrl) ??
+          asString(token.media) ??
+          asStringAtPath(token, ["metadata", "image"]) ??
+          asStringAtPath(token, ["metadata", "image_url"]) ??
+          null
+      ),
       collectionName: asString(collection?.name),
       collectionFloorPriceEth: collectionFloor,
       topTraitFloor: parseTopTraitFloor(token.attributes),
@@ -253,7 +299,7 @@ async function fetchTokenMetadata(
       .map((token) => `tokens=${encodeURIComponent(token)}`)
       .join("&");
     const payload = await fetchReservoirJson<{ tokens?: unknown[] }>(
-      `/tokens/v7?includeAttributes=true&limit=${batch.length}&${query}`,
+      `/tokens/v7?includeAttributes=true&includeTopBid=true&limit=${batch.length}&${query}`,
       apiKey
     );
     if (!payload?.tokens?.length) continue;
@@ -352,6 +398,10 @@ export function createCollectorIdentityAssetService(options: {
             chainNamespace: holding.chainNamespace,
             contractAddress: holding.contractAddress,
             tokenId,
+            receivedAt: holding.acquiredAt,
+            listedPriceEth: tokenMetadata?.listedPriceEth ?? null,
+            highestOfferEth: tokenMetadata?.highestOfferEth ?? null,
+            rarityRank: tokenMetadata?.rarityRank ?? null,
             name: tokenMetadata?.name ?? null,
             imageUrl: tokenMetadata?.imageUrl ?? null,
             collectionName:

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createCollectorIdentityAssetService } from "@/lib/collector-identity/assets";
+import {
+  createCollectorIdentityAssetService,
+  normalizeMediaUrl,
+} from "@/lib/collector-identity/assets";
 import type { NormalizedHolding } from "@/lib/wallet-inventory/domain";
 
 function holding(overrides: Partial<NormalizedHolding> = {}): NormalizedHolding {
@@ -35,6 +38,10 @@ test("asset service builds deterministic fallback assets without remote fetch", 
 
   assert.equal(assets.length, 1);
   assert.equal(assets[0].assetId, "eip155:0xabc0000000000000000000000000000000000000:1");
+  assert.equal(assets[0].receivedAt, null);
+  assert.equal(assets[0].listedPriceEth, null);
+  assert.equal(assets[0].highestOfferEth, null);
+  assert.equal(assets[0].rarityRank, null);
   assert.equal(assets[0].name, null);
   assert.equal(assets[0].collectionName, null);
   assert.equal(
@@ -57,11 +64,12 @@ test("asset service maps reservoir token and trait floor metadata", async () => 
                 contract: "0xABC0000000000000000000000000000000000000",
                 tokenId: "0x1",
                 name: "Test NFT",
-                image: "https://cdn.example.com/nft.png",
+                image: "ipfs://QmYwAPJzv5CZsnAzt8auVZRn4P4n8vkg8f9Vf9k6fQxJvG",
                 collection: {
                   name: "Test Collection",
                   floorAskPrice: { amount: { native: 1.2 } },
                 },
+                rarityRank: 42,
                 attributes: [
                   { key: "Background", value: "Blue", floorAskPrice: { amount: { native: 0.4 } } },
                   { key: "Hat", value: "Gold", floorAskPrice: { amount: { native: 0.9 } } },
@@ -69,6 +77,7 @@ test("asset service maps reservoir token and trait floor metadata", async () => 
               },
               market: {
                 floorAsk: { price: { amount: { native: 1.1 } } },
+                topBid: { price: { amount: { native: 0.95 } } },
               },
             },
           ],
@@ -101,7 +110,13 @@ test("asset service maps reservoir token and trait floor metadata", async () => 
     assert.equal(assets.length, 1);
     assert.equal(assets[0].assetId, "eip155:0xabc0000000000000000000000000000000000000:1");
     assert.equal(assets[0].name, "Test NFT");
-    assert.equal(assets[0].imageUrl, "https://cdn.example.com/nft.png");
+    assert.equal(
+      assets[0].imageUrl,
+      "https://ipfs.io/ipfs/QmYwAPJzv5CZsnAzt8auVZRn4P4n8vkg8f9Vf9k6fQxJvG"
+    );
+    assert.equal(assets[0].listedPriceEth, 1.1);
+    assert.equal(assets[0].highestOfferEth, 0.95);
+    assert.equal(assets[0].rarityRank, 42);
     assert.equal(assets[0].collectionName, "Test Collection");
     assert.equal(assets[0].collectionFloorPriceEth, 1.2);
     assert.equal(assets[0].topTraitFloor?.traitType, "Hat");
@@ -110,4 +125,21 @@ test("asset service maps reservoir token and trait floor metadata", async () => 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("media URL normalization supports https, ipfs, arweave, and missing values", () => {
+  assert.equal(
+    normalizeMediaUrl("https://cdn.example.com/image.png"),
+    "https://cdn.example.com/image.png"
+  );
+  assert.equal(
+    normalizeMediaUrl("ipfs://ipfs/Qmabcdef1234567890"),
+    "https://ipfs.io/ipfs/Qmabcdef1234567890"
+  );
+  assert.equal(
+    normalizeMediaUrl("ar://abc123"),
+    "https://arweave.net/abc123"
+  );
+  assert.equal(normalizeMediaUrl(""), null);
+  assert.equal(normalizeMediaUrl(null), null);
 });

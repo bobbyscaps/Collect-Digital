@@ -96,6 +96,12 @@ export function AssetCard({
             </dd>
           </div>
           <div className="flex items-center justify-between gap-2">
+            <dt className="text-muted-foreground">Highest Offer</dt>
+            <dd className="text-right font-medium">
+              {formatEth(asset.highestOfferEth)}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-2">
             <dt className="text-muted-foreground">Trait Floor Value</dt>
             <dd className="text-right font-medium">
               {formatEth(asset.topTraitFloor?.floorPriceEth ?? null)}
