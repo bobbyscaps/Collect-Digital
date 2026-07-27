@@ -51,6 +51,7 @@ function isCollectorIdentityResponse(
     !!body.wallets &&
     !!body.inventory &&
     !!body.collectionSummaries &&
+    !!body.assets &&
     !!body.statusModules &&
     !!body.achievements
   );

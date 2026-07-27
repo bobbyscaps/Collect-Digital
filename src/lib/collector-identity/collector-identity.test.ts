@@ -11,6 +11,7 @@ import {
   createCollectorIdentityService,
   type CollectorIdentityService,
 } from "@/lib/collector-identity/compose";
+import { createCollectorIdentityAssetService } from "@/lib/collector-identity/assets";
 import {
   COLLECTOR_IDENTITY_API_SCHEMA_VERSION,
   type CollectorIdentityResponse,
@@ -94,6 +95,9 @@ function createIdentityStack(input?: {
     profileWallets,
     inventory,
     analysis,
+    assetService: createCollectorIdentityAssetService({
+      enableRemoteFetch: false,
+    }),
   });
   return { profileWallets, inventory, analysis, service };
 }
@@ -111,7 +115,6 @@ function assertNoFabricatedMetrics(identity: CollectorIdentityResponse) {
     "helius",
     "rawresponse",
     "providerpayload",
-    "floorprice",
     "rarityrank",
   ];
   for (const key of forbidden) {
@@ -181,6 +184,9 @@ test("API authenticated request returns sectioned Collector Identity", async () 
   assert.equal(body.wallets.data?.verifiedWalletCount, 1);
   assert.equal(body.inventory.state, "live");
   assert.equal(body.inventory.data?.uniqueTokenCount, 1);
+  assert.equal(body.assets.state, "live");
+  assert.equal(body.assets.data?.length, 1);
+  assert.match(body.assets.data?.[0]?.openseaUrl ?? "", /opensea\.io\/assets/);
   assertNoFabricatedMetrics(body);
 });
 
@@ -212,6 +218,7 @@ test("profile not found yields empty wallets without failing identity", async ()
   assert.equal(identity.identity.state, "live");
   assert.equal(identity.wallets.state, "empty");
   assert.equal(identity.inventory.state, "empty");
+  assert.equal(identity.assets.state, "empty");
   assert.equal(identity.achievements.state, "coming_soon");
   assertNoFabricatedMetrics(identity);
 });
@@ -231,6 +238,7 @@ test("no verified wallets keeps identity renderable", async () => {
   assert.match(identity.wallets.message ?? "", /verified/i);
   assert.equal(identity.inventory.state, "empty");
   assert.equal(identity.identity.state, "live");
+  assert.equal(identity.assets.state, "empty");
   assertNoFabricatedMetrics(identity);
 });
 
@@ -273,6 +281,8 @@ test("partial inventory is exposed as partial progressive state", async () => {
   assert.equal(identity.inventory.state, "partial");
   assert.equal(identity.inventory.data?.uniqueTokenCount, 1);
   assert.equal(identity.collectionSummaries.state, "partial");
+  assert.equal(identity.assets.state, "partial");
+  assert.equal(identity.assets.data?.length, 1);
   assert.ok(second.wallet.id);
   assertNoFabricatedMetrics(identity);
 });
@@ -312,6 +322,9 @@ test("stale inventory uses last persisted holdings when analysis fails", async (
     profileWallets,
     inventory,
     analysis: failingAnalysis,
+    assetService: createCollectorIdentityAssetService({
+      enableRemoteFetch: false,
+    }),
   });
 
   const identity = await service.getMyIdentity(auth(profileId));
@@ -320,6 +333,8 @@ test("stale inventory uses last persisted holdings when analysis fails", async (
   assert.equal(identity.inventory.data?.uniqueTokenCount, 1);
   assert.equal(identity.inventory.lastUpdatedAt, "2026-07-25T08:00:10.000Z");
   assert.match(identity.inventory.message ?? "", /last successfully persisted/i);
+  assert.equal(identity.assets.state, "stale");
+  assert.equal(identity.assets.data?.length, 1);
   assertNoFabricatedMetrics(identity);
 });
 
@@ -348,6 +363,9 @@ test("inventory unavailable without persisted fallback is an error section", asy
     profileWallets,
     inventory: brokenInventory,
     analysis: failingAnalysis,
+    assetService: createCollectorIdentityAssetService({
+      enableRemoteFetch: false,
+    }),
   });
 
   const identity = await service.getMyIdentity(auth(profileId));
@@ -355,6 +373,7 @@ test("inventory unavailable without persisted fallback is an error section", asy
   assert.equal(identity.wallets.state, "live");
   assert.equal(identity.inventory.state, "error");
   assert.equal(identity.collectionSummaries.state, "error");
+  assert.equal(identity.assets.state, "error");
   assertNoFabricatedMetrics(identity);
 });
 
@@ -373,6 +392,9 @@ test("one failed section does not prevent remaining identity from rendering", as
     profileWallets,
     inventory,
     analysis: failingAnalysis,
+    assetService: createCollectorIdentityAssetService({
+      enableRemoteFetch: false,
+    }),
   });
 
   const identity = await service.getMyIdentity(auth(profileId));
@@ -421,6 +443,12 @@ test("typed client parses success and typed errors", async () => {
             data: null,
             lastUpdatedAt: null,
             message: "Verify a wallet to see collection summaries.",
+          },
+          assets: {
+            state: "empty",
+            data: null,
+            lastUpdatedAt: null,
+            message: "Verify a wallet to view NFT assets.",
           },
           statusModules: {
             collectorScore: {
@@ -662,7 +690,9 @@ test("regression: profile pages no longer embed Elite Flipper or fake scores", (
   }
 
   const comingSoonRoots = roots.filter(
-    (relative) => !relative.endsWith("layout.tsx")
+    (relative) =>
+      !relative.endsWith("layout.tsx") &&
+      !relative.endsWith("collection/page.tsx")
   );
   for (const relative of comingSoonRoots) {
     const source = readFileSync(path.join(process.cwd(), relative), "utf8");

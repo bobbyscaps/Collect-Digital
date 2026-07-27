@@ -41,6 +41,12 @@ function identityWithVerifiedWallets(walletIds: readonly string[]) {
       lastUpdatedAt: null,
       message: null,
     },
+    assets: {
+      state: "live",
+      data: [],
+      lastUpdatedAt: null,
+      message: null,
+    },
     statusModules: {
       collectorScore: {
         state: "coming_soon",

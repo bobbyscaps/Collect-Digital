@@ -74,6 +74,25 @@ export interface CollectorIdentityCollectionSummaryData {
   walletsContainingCollection: readonly string[];
 }
 
+export interface CollectorIdentityAssetTraitFloorData {
+  traitType: string | null;
+  traitValue: string | null;
+  floorPriceEth: number;
+}
+
+export interface CollectorIdentityAssetData {
+  assetId: string;
+  chainNamespace: WalletChainNamespace;
+  contractAddress: string;
+  tokenId: string;
+  name: string | null;
+  imageUrl: string | null;
+  collectionName: string | null;
+  collectionFloorPriceEth: number | null;
+  topTraitFloor: CollectorIdentityAssetTraitFloorData | null;
+  openseaUrl: string;
+}
+
 /**
  * Reserved dynamic status modules — always current state when implemented.
  * PR8 returns Coming Soon (never fabricated scores / social counts).
@@ -98,6 +117,7 @@ export interface CollectorIdentityResponse {
   collectionSummaries: ProgressiveSection<
     readonly CollectorIdentityCollectionSummaryData[]
   >;
+  assets: ProgressiveSection<readonly CollectorIdentityAssetData[]>;
   /** Dynamic current-status modules (not achievements). */
   statusModules: CollectorIdentityStatusModules;
   /**

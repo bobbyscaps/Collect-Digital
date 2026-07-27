@@ -58,6 +58,7 @@ import {
   WalletVerificationFlowClientError,
 } from "@/lib/wallet-verification-flow/client";
 import type { CollectorIdentityResponse } from "@/lib/collector-identity/api-models";
+import { createCollectorIdentityAssetService } from "@/lib/collector-identity/assets";
 import { createCollectorIdentityService } from "@/lib/collector-identity/compose";
 import { createCollectorAnalysisService } from "@/lib/collector-analysis/service";
 
@@ -706,6 +707,9 @@ test("verification followed by successful sync refreshes collector identity", as
     profileWallets,
     inventory,
     analysis,
+    assetService: createCollectorIdentityAssetService({
+      enableRemoteFetch: false,
+    }),
   });
   const me = await identity.getMyIdentity(auth("did:privy:user-1"));
   assert.equal(me.wallets.state, "live");
