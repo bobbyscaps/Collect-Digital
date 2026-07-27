@@ -650,7 +650,7 @@ test("sync failure does not mark inventory ready", async () => {
   assert.equal(latestSuccessful, null);
   assert.equal(
     resolveInventoryStatus([
-      { walletId: wallet.id, lastSuccessfulSyncAt: latestSuccessful?.syncCompletedAt ?? null },
+      { walletId: wallet.id, lastSuccessfulSyncAt: null },
     ]),
     "unsynced"
   );
