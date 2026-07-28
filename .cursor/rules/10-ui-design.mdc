@@ -1,0 +1,133 @@
+
+---
+description: Collect Digital interface, interaction, accessibility, and visual design rules
+
+globs:
+  - "src/app/**/*.{ts,tsx,css}"
+  - "src/components/**/*.{ts,tsx}"
+  - "src/styles/**/*.css"
+
+alwaysApply: false
+---
+
+# Collect Digital UI Design
+
+## Purpose
+
+Collect Digital should feel like the Tiffany & Co. of collector platforms: premium, joyful, organized, trusted, and alive with discovery.
+
+Users should feel pulled into their personal collecting happy place—a place to view, organize, research, and hunt for collectibles they love.
+
+## Experience Principles
+
+- Make collecting feel fun without making the product childish.
+- Make the platform feel alive without creating visual noise.
+- Make premium design feel inviting rather than cold.
+- Make complex information feel organized and easy to understand.
+- Make discovery feel continuous, intentional, and rewarding.
+- Build trust through clarity, consistency, and predictable interactions.
+- Design for collectors first, not short-term traders.
+
+## Visual Direction
+
+- Prefer refined, spacious, editorial layouts.
+- Use strong hierarchy and clear focal points.
+- Let collectible imagery remain the visual hero.
+- Use restrained accents rather than excessive gradients or glow effects.
+- Avoid generic Web3, casino, and trading-dashboard aesthetics.
+- Avoid crowded cards, dense interfaces, and unnecessary decoration.
+- Keep typography, spacing, radius, borders, and elevation consistent.
+- Use existing design tokens before introducing new values.
+
+## Never
+
+- Never design screens that feel like trading terminals.
+- Never prioritize hype over clarity.
+- Never use visual clutter to increase engagement.
+- Never create multiple patterns for the same UI element.
+- Never sacrifice usability for visual effects.
+- Never hide important information behind unnecessary interactions.
+
+## Discovery and Freshness
+
+The interface should communicate that new information and opportunities are continually emerging.
+
+- Surface meaningful updates, activity, recommendations, and discoveries.
+- Use motion to communicate change, progress, or hierarchy.
+- Do not use animation only for decoration.
+- Avoid auto-moving content that reduces control or readability.
+- Clearly distinguish new, trending, updated, and personalized information.
+- Never create false urgency, fake activity, or manipulative engagement patterns.
+
+## Navigation and Organization
+
+- Keep primary navigation stable and predictable.
+- Organize information around collector goals.
+- Reduce the number of decisions required to complete common tasks.
+- Use progressive disclosure for advanced information.
+- Preserve user context when moving between collections, creators, and communities.
+- Do not hide important actions behind unclear icons or gestures.
+- Prefer descriptive labels over clever terminology.
+
+## Components
+
+- Reuse existing components before creating new ones.
+- Extend the design system instead of styling pages independently.
+- Do not create duplicate button, card, modal, tab, badge, or input patterns.
+- Keep presentation components separate from business logic.
+- Build components to support loading, empty, error, disabled, and success states.
+- Preserve responsive and accessible behavior when extending components.
+
+## Trust and Safety
+
+Collect Digital should feel as dependable as established consumer financial and marketplace products.
+
+- Clearly explain wallet connections, permissions, transactions, and irreversible actions.
+- Require confirmation before destructive or irreversible actions.
+- Never imply that a transaction succeeded before confirmation.
+- Never conceal fees, risk, missing information, or uncertain data.
+- Make authentication and wallet state visible and understandable.
+- Use reassuring clarity rather than alarming language.
+- Never use deceptive countdowns, fake scarcity, or dark patterns.
+
+## Responsive Design
+
+- Design mobile and desktop experiences intentionally.
+- Do not treat mobile as a compressed desktop layout.
+- Preserve hierarchy, clarity, and core actions at every breakpoint.
+- Prevent horizontal overflow.
+- Ensure touch targets are comfortably usable.
+- Test long names, missing images, large numbers, and variable content lengths.
+
+## Accessibility
+
+- Support keyboard navigation.
+- Preserve visible focus states.
+- Use semantic HTML.
+- Add accessible labels where visible text is insufficient.
+- Do not rely on color alone to communicate meaning.
+- Maintain readable contrast.
+- Respect reduced-motion preferences.
+
+## Completion Standard
+
+Before considering UI work complete, verify:
+
+- It feels consistent with the existing product.
+- It is clear, organized, and easy to navigate.
+- It supports loading, empty, error, and success states.
+- It works across intended screen sizes.
+- It does not fabricate activity or urgency.
+- It preserves accessibility.
+- It feels premium, joyful, trustworthy, and alive.
+
+## Completion Checklist
+
+Before considering UI work complete, verify:
+
+- The interface feels premium and trustworthy.
+- The hierarchy is clear.
+- Loading, empty, and error states exist.
+- Components reuse the design system.
+- The layout works on mobile and desktop.
+- Accessibility has been preserved.
