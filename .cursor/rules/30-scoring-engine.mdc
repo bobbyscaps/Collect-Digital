@@ -1,4 +1,3 @@
-
 ---
 description: Rules governing Collect Digital scoring, rankings, and intelligence models.
 
@@ -16,86 +15,213 @@ alwaysApply: false
 
 ## Purpose
 
-Collect Digital provides two distinct intelligence systems:
+Collect Digital provides two independent intelligence systems:
 
 1. The official Collect Digital Score
 2. User-defined personalized scoring models
 
-These systems must remain separate, clearly labeled, and independently stored.
+These systems must remain completely separate, clearly labeled, independently stored, and independently versioned.
+
+The official score represents Collect Digital's objective intelligence model.
+
+Personalized scores represent an individual collector's preferences.
+
+Neither should ever be confused with the other.
+
+---
 
 ## Official Collect Digital Score
 
-- The official score is assigned by Collect Digital.
-- Its methodology is centrally defined.
-- Its default factor weights must not be silently changed.
-- Every score must be explainable through component factors.
-- Measured data, editorial evaluation, and inferred signals must remain distinguishable.
+The official score is assigned by Collect Digital.
+
+- Methodology is centrally defined.
+- Default factor weights must never change silently.
+- Every score must be explainable.
+- Measured, inferred, and editorial factors must remain distinguishable.
 - Methodology changes must be versioned.
 - Historical scores should remain reproducible whenever practical.
+- The official score is an intelligence model, not an investment recommendation.
+
+---
 
 ## Personalized Scoring
 
-- Collectors may choose which factors matter to them.
-- Collectors may adjust factor weights.
-- Personalized rankings must never overwrite the official Collect Digital Score.
-- Personalized results must be clearly labeled.
-- User preferences must be stored separately from official scoring configuration.
-- Do not present personalized rankings as Collect Digital's official opinion.
+Collectors may create their own scoring models.
+
+Collectors may:
+
+- Enable or disable factors.
+- Adjust factor weights.
+- Save multiple scoring models.
+- Rank projects according to their own priorities.
+
+Personalized rankings must never:
+
+- Overwrite the official score.
+- Modify official methodology.
+- Be presented as Collect Digital's opinion.
+
+User preferences must remain completely separate from official scoring configuration.
+
+---
+
+## Scoring Factors
+
+Scoring factors should be:
+
+- Independently measurable
+- Clearly defined
+- Documented
+- Testable
+- Versionable
+- Backward compatible whenever practical
+
+New factors should be additive rather than requiring redesigns of the scoring engine.
+
+---
+
+## Confidence
+
+Every score has a confidence level.
+
+Confidence should reflect:
+
+- Data completeness
+- Data freshness
+- Provider reliability
+- Factor availability
+- Validation quality
+
+Lower confidence should never be hidden by artificially precise scores.
+
+---
 
 ## Data Integrity
 
-- Never fabricate scores, factors, confidence values, or explanations.
-- Never treat missing data as zero unless zero is factually correct.
-- Unknown inputs must remain unknown.
-- Incomplete data should reduce confidence rather than produce invented certainty.
-- Preserve source and freshness information when available.
+Never fabricate:
 
-## Architecture
+- Scores
+- Factor values
+- Confidence values
+- Rankings
+- Explanations
 
-- Keep scoring logic separate from UI components.
-- Centralize formulas, factors, weights, thresholds, and methodology versions.
-- Use deterministic, testable functions.
-- Avoid duplicated scoring logic across routes, components, and jobs.
-- Do not hardcode weights inside presentation code.
-- Validate factor inputs before calculation.
-- Keep raw metrics separate from calculated scores.
-- Design new factors to be additive and backward-compatible.
+Never treat missing data as zero unless zero is factually correct.
+
+Unknown inputs should remain unknown.
+
+Incomplete information should reduce confidence rather than create false certainty.
+
+Preserve source and freshness information whenever available.
+
+---
 
 ## Explainability
 
-Every displayed score should support an explanation that identifies:
+Every displayed score should support an explanation identifying:
 
 - The factors used
 - The weight of each factor
-- The available source data
-- Missing or stale inputs
-- The methodology version
-- Whether the result is official or personalized
+- Source data
+- Missing inputs
+- Stale inputs
+- Confidence
+- Methodology version
+- Whether the score is official or personalized
+
+Users should understand why a project received its score.
+
+---
+
+## Architecture
+
+Keep scoring logic completely separate from UI components.
+
+Centralize:
+
+- Formulas
+- Factors
+- Weights
+- Thresholds
+- Confidence calculations
+- Methodology versions
+
+Use deterministic, testable functions.
+
+Avoid duplicated scoring logic across:
+
+- Routes
+- Components
+- Background jobs
+- API handlers
+
+Never hardcode weights inside presentation code.
+
+Validate every factor before calculation.
+
+Keep raw metrics separate from calculated scores.
+
+---
+
+## Auditability
+
+Every official score should be reproducible whenever practical.
+
+Methodology versions, factor inputs, and calculations should allow historical scores to be regenerated.
+
+Never silently overwrite historical scoring methodology.
+
+---
 
 ## Product Principle
 
-A project is more than its floor price.
+A project is far more than its floor price.
 
-Floor price may be one signal, but it must never become the sole measure of collection quality, health, credibility, community strength, or collector demand.
+Floor price is only one signal.
+
+Collection quality should emerge from a balanced evaluation of:
+
+- Community
+- Collectors
+- Liquidity
+- Holder distribution
+- Creator execution
+- Longevity
+- Utility
+- Art
+- Market behavior
+- Social health
+- Additional measurable factors
+
+No single metric should dominate the overall score.
+
+---
 
 ## Never
 
-- Never merge official and personalized scoring.
-- Never silently change formulas or weights.
-- Never calculate scores inside UI components.
-- Never hide missing inputs.
-- Never present uncertain outputs as precise facts.
-- Never use engagement or price alone as proof of quality.
-- Never overwrite historical methodology without a migration or version change.
+Never:
 
-## Completion Checklist
+- Merge official and personalized scoring.
+- Silently change formulas or weights.
+- Calculate scores inside UI components.
+- Hide missing inputs.
+- Present uncertain outputs as precise facts.
+- Use engagement or price alone as proof of quality.
+- Allow one factor to overwhelm the entire model without explicit design.
+- Overwrite historical methodology without versioning.
+
+---
+
+## Scoring Acceptance Criteria
 
 Before considering scoring work complete, verify:
 
 - Official and personalized scoring remain separate.
 - Inputs are validated.
 - Missing data is represented honestly.
+- Confidence is calculated appropriately.
 - Calculation logic is centralized and testable.
-- The methodology is explainable.
-- Formula or weight changes are versioned.
-- No scoring values were fabricated.
+- Methodology is explainable.
+- Formula and weight changes are versioned.
+- Historical scores remain reproducible whenever practical.
+- No scoring values have been fabricated.

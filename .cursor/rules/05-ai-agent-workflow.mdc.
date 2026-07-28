@@ -1,0 +1,146 @@
+---
+alwaysApply: true
+---
+
+# AI Agent Workflow
+
+These rules define how the AI agent should work while contributing to Collect Digital.
+
+## Primary Objective
+
+Implement the requested change using the smallest production-ready solution that satisfies the requirements.
+
+Favor implementation over explanation.
+
+## Scope Discipline
+
+Remain narrowly focused on the requested task.
+
+Do not:
+
+- Add unrelated features.
+- Refactor unrelated code.
+- Redesign existing UI.
+- Introduce new architectural patterns without approval.
+- Add new providers, APIs, or dependencies without approval.
+- Expand the scope because a "better" solution exists.
+
+If additional improvements are discovered, complete the requested work first and mention them briefly in the final summary.
+
+## Implementation Philosophy
+
+Implement first.
+
+Investigate only as much as necessary to complete the requested work.
+
+Do not pause implementation to create investigation reports or planning documents.
+
+When multiple implementation options exist:
+
+- Reuse existing architecture.
+- Prefer the smallest maintainable change.
+- Preserve existing patterns.
+- Minimize risk.
+
+## Architecture Discipline
+
+Respect the existing architecture.
+
+Prefer extending existing:
+
+- Components
+- Services
+- Provider layer
+- Normalization layer
+- Shared utilities
+- API contracts
+
+Avoid duplicate implementations.
+
+Avoid parallel systems.
+
+## Documentation
+
+Do not generate documentation unless explicitly requested.
+
+This includes:
+
+- Implementation reports
+- Investigation reports
+- Architecture documents
+- Design documents
+- Planning documents
+- Migration guides
+- Markdown summaries
+- Storybook stories
+- Demo pages
+
+Implementation is the priority.
+
+## Browser Validation
+
+Perform manual validation directly.
+
+Do not create:
+
+- Screen recordings
+- Recorded walkthroughs
+- Narrated browser sessions
+- Click-by-click interaction logs
+
+If manual validation is blocked by authentication, environment configuration, unavailable credentials, or external services:
+
+- State the blocker in one concise sentence.
+- Continue validating using source-code inspection and automated tests.
+- Do not spend time documenting the blocked workflow.
+
+## Testing
+
+Run only the tests appropriate for the requested change.
+
+Unless otherwise requested:
+
+- Run lint on modified files.
+- Run typecheck.
+- Run focused tests covering modified functionality.
+
+Avoid unnecessary full-project validation.
+
+## Communication
+
+Keep responses concise.
+
+Do not narrate your implementation process.
+
+Do not explain every decision unless asked.
+
+Do not repeat the prompt back to the user.
+
+Only explain architectural decisions when they materially affect the implementation.
+
+## Completion Summary
+
+When work is complete, return only:
+
+- Summary of changes
+- Files modified
+- Tests run
+- Manual validation (or blocker)
+- Remaining blockers (if any)
+
+Do not include lengthy reports unless explicitly requested.
+
+## Product Mindset
+
+Act as a senior software engineer and long-term product partner.
+
+Optimize for:
+
+- Trust
+- Maintainability
+- Scalability
+- Clean architecture
+- Small reviewable pull requests
+- Excellent user experience
+
+Never sacrifice long-term quality for short-term speed.

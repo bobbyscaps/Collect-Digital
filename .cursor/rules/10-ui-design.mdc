@@ -1,4 +1,3 @@
-
 ---
 description: Collect Digital interface, interaction, accessibility, and visual design rules
 
@@ -16,7 +15,9 @@ alwaysApply: false
 
 Collect Digital should feel like the Tiffany & Co. of collector platforms: premium, joyful, organized, trusted, and alive with discovery.
 
-Users should feel pulled into their personal collecting happy place—a place to view, organize, research, and hunt for collectibles they love.
+Users should feel pulled into their personal collecting happy place—a place to view, organize, research, showcase, and discover collectibles they love.
+
+---
 
 ## Experience Principles
 
@@ -28,16 +29,53 @@ Users should feel pulled into their personal collecting happy place—a place to
 - Build trust through clarity, consistency, and predictable interactions.
 - Design for collectors first, not short-term traders.
 
+---
+
 ## Visual Direction
 
 - Prefer refined, spacious, editorial layouts.
-- Use strong hierarchy and clear focal points.
+- Use strong visual hierarchy and clear focal points.
 - Let collectible imagery remain the visual hero.
-- Use restrained accents rather than excessive gradients or glow effects.
+- Use restrained accents rather than excessive gradients, glow effects, or visual gimmicks.
 - Avoid generic Web3, casino, and trading-dashboard aesthetics.
 - Avoid crowded cards, dense interfaces, and unnecessary decoration.
-- Keep typography, spacing, radius, borders, and elevation consistent.
+- Keep typography, spacing, borders, radius, elevation, and color usage consistent.
 - Use existing design tokens before introducing new values.
+
+---
+
+## Predictability
+
+Users should always understand:
+
+- Where they are.
+- What happened.
+- What will happen next.
+
+Avoid:
+
+- Unexpected navigation.
+- Hidden state changes.
+- Surprising interface behavior.
+- Interfaces that make users guess what actions will do.
+
+Predictability builds trust.
+
+---
+
+## Information Density
+
+Collect Digital will present large amounts of marketplace intelligence.
+
+Every piece of information should justify its presence.
+
+- Prioritize the most valuable information.
+- Avoid displaying every available metric.
+- Prefer progressive disclosure over crowded layouts.
+- Surface advanced information only when it improves decision making.
+- Reduce cognitive load whenever possible.
+
+---
 
 ## Never
 
@@ -48,16 +86,20 @@ Users should feel pulled into their personal collecting happy place—a place to
 - Never sacrifice usability for visual effects.
 - Never hide important information behind unnecessary interactions.
 
+---
+
 ## Discovery and Freshness
 
 The interface should communicate that new information and opportunities are continually emerging.
 
 - Surface meaningful updates, activity, recommendations, and discoveries.
-- Use motion to communicate change, progress, or hierarchy.
-- Do not use animation only for decoration.
-- Avoid auto-moving content that reduces control or readability.
+- Use motion only to communicate change, hierarchy, or progress.
+- Do not animate purely for decoration.
+- Avoid auto-moving content that reduces user control.
 - Clearly distinguish new, trending, updated, and personalized information.
-- Never create false urgency, fake activity, or manipulative engagement patterns.
+- Never create false urgency, fake activity, fake notifications, or manipulative engagement patterns.
+
+---
 
 ## Navigation and Organization
 
@@ -65,69 +107,100 @@ The interface should communicate that new information and opportunities are cont
 - Organize information around collector goals.
 - Reduce the number of decisions required to complete common tasks.
 - Use progressive disclosure for advanced information.
-- Preserve user context when moving between collections, creators, and communities.
+- Preserve user context when moving between collections, creators, communities, and assets.
 - Do not hide important actions behind unclear icons or gestures.
 - Prefer descriptive labels over clever terminology.
+
+---
 
 ## Components
 
 - Reuse existing components before creating new ones.
 - Extend the design system instead of styling pages independently.
-- Do not create duplicate button, card, modal, tab, badge, or input patterns.
+- Do not create duplicate button, card, modal, tab, badge, table, or input patterns.
 - Keep presentation components separate from business logic.
-- Build components to support loading, empty, error, disabled, and success states.
-- Preserve responsive and accessible behavior when extending components.
+- Build components that support:
+  - Loading
+  - Empty
+  - Error
+  - Disabled
+  - Success
+- Preserve responsive and accessible behavior whenever extending components.
+
+---
+
+## Data Presentation
+
+Collect Digital's competitive advantage is trust.
+
+Never imply precision that does not exist.
+
+If data is:
+
+- Estimated
+- Delayed
+- Incomplete
+- Provider-limited
+- Unavailable
+
+communicate that honestly.
+
+Prefer an honest "Unavailable" over a misleading value.
+
+Never fabricate activity, pricing, rarity, scores, marketplace metrics, or social metrics.
+
+---
 
 ## Trust and Safety
 
-Collect Digital should feel as dependable as established consumer financial and marketplace products.
+Collect Digital should feel as dependable as established financial platforms and premium marketplaces.
 
 - Clearly explain wallet connections, permissions, transactions, and irreversible actions.
 - Require confirmation before destructive or irreversible actions.
-- Never imply that a transaction succeeded before confirmation.
-- Never conceal fees, risk, missing information, or uncertain data.
+- Never imply a transaction succeeded before confirmation.
+- Never conceal fees, risks, missing information, or uncertainty.
 - Make authentication and wallet state visible and understandable.
 - Use reassuring clarity rather than alarming language.
 - Never use deceptive countdowns, fake scarcity, or dark patterns.
 
+---
+
 ## Responsive Design
 
-- Design mobile and desktop experiences intentionally.
-- Do not treat mobile as a compressed desktop layout.
-- Preserve hierarchy, clarity, and core actions at every breakpoint.
+- Design mobile and desktop intentionally.
+- Do not treat mobile as a compressed desktop.
+- Preserve hierarchy, clarity, and primary actions at every breakpoint.
 - Prevent horizontal overflow.
-- Ensure touch targets are comfortably usable.
-- Test long names, missing images, large numbers, and variable content lengths.
+- Ensure touch targets remain comfortably usable.
+- Test long names, missing images, large numbers, empty states, and variable content lengths.
+
+---
 
 ## Accessibility
 
 - Support keyboard navigation.
 - Preserve visible focus states.
 - Use semantic HTML.
-- Add accessible labels where visible text is insufficient.
-- Do not rely on color alone to communicate meaning.
+- Provide accessible labels where visible text is insufficient.
+- Do not rely solely on color to communicate meaning.
 - Maintain readable contrast.
 - Respect reduced-motion preferences.
 
-## Completion Standard
+---
+
+## UI Acceptance Criteria
 
 Before considering UI work complete, verify:
 
-- It feels consistent with the existing product.
-- It is clear, organized, and easy to navigate.
-- It supports loading, empty, error, and success states.
-- It works across intended screen sizes.
-- It does not fabricate activity or urgency.
-- It preserves accessibility.
-- It feels premium, joyful, trustworthy, and alive.
-
-## Completion Checklist
-
-Before considering UI work complete, verify:
-
-- The interface feels premium and trustworthy.
-- The hierarchy is clear.
-- Loading, empty, and error states exist.
-- Components reuse the design system.
-- The layout works on mobile and desktop.
+- The interface feels premium, joyful, trustworthy, and alive.
+- The visual hierarchy is clear.
+- The layout remains clean and uncluttered.
+- Information density is appropriate.
+- Navigation is predictable.
+- Components reuse the existing design system.
+- Loading, empty, error, disabled, and success states exist where appropriate.
+- Data is presented honestly.
+- No activity, urgency, or marketplace information is fabricated.
+- The experience works across intended screen sizes.
 - Accessibility has been preserved.
+- The implementation feels consistent with the rest of Collect Digital.
