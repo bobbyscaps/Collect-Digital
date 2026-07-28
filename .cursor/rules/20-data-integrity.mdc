@@ -1,0 +1,252 @@
+---
+description: Collect Digital data integrity, validation, normalization, and trust rules
+
+globs:
+  - "src/**/*.ts"
+  - "src/**/*.tsx"
+
+alwaysApply: false
+---
+
+# Collect Digital Data Integrity
+
+## Purpose
+
+Collect Digital is a trusted intelligence platform.
+
+Collectors must be able to trust every metric, score, recommendation, and insight presented by the platform.
+
+Accuracy always takes priority over completeness.
+
+When data is uncertain, communicate uncertainty instead of guessing.
+
+Trust is our most valuable product feature. Every engineering decision involving data should protect or strengthen that trust.
+
+---
+
+## Core Principles
+
+- Unknown is better than wrong.
+- Preserve trust over convenience.
+- Never fabricate data.
+- Keep raw data separate from calculated data.
+- Preserve data provenance whenever possible.
+- Preserve data lineage from provider to UI.
+- Make freshness visible.
+- Be transparent about limitations.
+
+---
+
+## External Data Sources
+
+Collect Digital may consume data from:
+
+- Blockchain RPC providers
+- Alchemy
+- Reservoir
+- OpenSea
+- Magic Eden
+- X
+- Discord
+- Internal APIs
+- Future providers
+
+Integrations should be provider-agnostic.
+
+Business logic should never depend on a specific provider implementation.
+
+Provider adapters should normalize external data into Collect Digital's internal models.
+
+---
+
+## Data Validation
+
+Always validate:
+
+- Required fields
+- Numeric ranges
+- Wallet addresses
+- Contract addresses
+- Chain IDs
+- Token IDs
+- Dates
+- URLs
+- API responses
+
+Assume every external API can fail, timeout, return stale data, or return incomplete data.
+
+Never trust provider data without validation.
+
+---
+
+## Data Normalization
+
+Normalize provider data immediately after retrieval.
+
+The rest of the application should consume Collect Digital's internal data models rather than provider-specific formats.
+
+Normalize:
+
+- Naming
+- Dates
+- Numeric values
+- Addresses
+- Marketplace metadata
+- Collection metadata
+- NFT metadata
+
+Avoid provider-specific logic outside the provider layer.
+
+---
+
+## Missing Data
+
+Never replace unknown values with zero.
+
+Never silently invent default values.
+
+Instead use whichever matches the existing architecture:
+
+- null
+- undefined
+- "Unknown"
+- "Unavailable"
+- "Not yet indexed"
+
+Missing data should remain explicitly missing.
+
+---
+
+## Freshness
+
+Users should understand how current data is.
+
+Whenever practical:
+
+- Track last updated timestamps.
+- Track provider source.
+- Surface stale information.
+- Distinguish live, cached, and historical data.
+- Avoid presenting outdated data as current.
+
+---
+
+## Derived Metrics
+
+Keep calculated values separate from source values.
+
+Examples include:
+
+- Wallet Score
+- Collection Score
+- Rarity Score
+- Holder Distribution
+- Liquidity Metrics
+- Community Metrics
+
+Never overwrite raw provider data.
+
+Always calculate derived metrics from trusted source data.
+
+Derived values should be reproducible from the underlying data.
+
+---
+
+## Error Handling
+
+Handle failures gracefully.
+
+Prefer:
+
+- Partial results
+- Retry mechanisms
+- Meaningful error messages
+- Clear unavailable states
+
+Avoid:
+
+- Empty white screens
+- Silent failures
+- Fake placeholder values
+- Suppressing provider errors without logging
+
+---
+
+## Security
+
+Never expose:
+
+- Private keys
+- Secrets
+- API credentials
+- Service role keys
+- Internal tokens
+
+Never trust client-provided blockchain data without validation.
+
+Never log sensitive credentials.
+
+---
+
+## Architecture
+
+Prefer:
+
+- Immutable data
+- Pure transformation functions
+- Provider abstraction
+- Strong typing
+- Centralized normalization
+- Reusable parsing utilities
+
+Avoid:
+
+- Business logic inside UI components
+- Duplicated parsing logic
+- Hidden side effects
+- Provider-specific logic outside adapters
+
+---
+
+## Never
+
+Never fabricate:
+
+- Wallet balances
+- NFT ownership
+- Floor prices
+- Offers
+- Sales history
+- Holder counts
+- Marketplace statistics
+- Social metrics
+- Trading volume
+- Blockchain transactions
+- Scores
+
+Never assume missing data means zero.
+
+Never hide uncertainty.
+
+Never silently discard provider errors.
+
+Never mix raw data with calculated values.
+
+Never present estimated values as confirmed facts.
+
+---
+
+## Data Acceptance Criteria
+
+Before considering work complete, verify:
+
+- External data is validated.
+- Provider responses are normalized.
+- Unknown values remain unknown.
+- Raw data is preserved.
+- Derived data is calculated separately.
+- Provider failures are handled gracefully.
+- Freshness is represented where appropriate.
+- Sensitive information is protected.
+- No fabricated values exist.
+- User trust has been preserved.
