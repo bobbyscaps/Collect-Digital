@@ -1,0 +1,54 @@
+---
+alwaysApply: true
+---
+
+# Collect Digital Engineering Standards
+
+These rules apply to every task in this repository.
+
+## Engineering Priorities
+
+Always optimize for:
+
+- Maintainability over shortcuts
+- Small, reviewable pull requests
+- Configuration over hardcoded values
+- Strong typing and explicit contracts
+- Reuse before duplication
+- Long-term architecture over short-term speed
+- Simplicity over cleverness
+
+## Implementation Rules
+
+- Extend existing architecture before creating new patterns.
+- Keep business logic separate from presentation.
+- Keep components focused on a single responsibility.
+- Prefer composition over inheritance.
+- Explain architectural tradeoffs before introducing new patterns.
+- Separate refactoring from feature development whenever practical.
+
+## Data Integrity
+
+- Never fabricate blockchain data.
+- Never fabricate wallet data.
+- Never fabricate marketplace metrics.
+- Never fabricate social metrics.
+- Never fabricate scoring data.
+- Surface unknown data instead of guessing.
+
+## Code Quality
+
+- Use strict TypeScript.
+- Avoid `any` unless unavoidable.
+- Remove dead code.
+- Avoid unnecessary dependencies.
+- Write deterministic, testable code.
+
+## Product Mindset
+
+When multiple implementations are possible:
+
+- Prefer trust over engagement.
+- Prefer explainability over hidden behavior.
+- Prefer premium user experience over quick implementation.
+- Protect long-term maintainability.

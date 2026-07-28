@@ -1,0 +1,212 @@
+
+---
+description: Collect Digital interface, interaction, accessibility, and visual design rules
+
+globs:
+  - "src/app/**/*.{ts,tsx,css}"
+  - "src/components/**/*.{ts,tsx}"
+  - "src/styles/**/*.css"
+
+alwaysApply: false
+
+---
+# Collect Digital Data Integrity
+
+## Purpose
+
+Collect Digital is a trusted intelligence platform.
+
+Collectors must be able to trust every metric, score, recommendation, and insight presented by the platform.
+
+Accuracy always takes priority over completeness.
+
+When data is uncertain, communicate uncertainty instead of guessing.
+
+Trust is our most valuable product feature. Every engineering decision involving data should protect or increase user trust.
+
+---
+
+## Core Principles
+
+- Unknown is better than wrong.
+- Preserve trust over convenience.
+- Never fabricate data.
+- Keep raw data separate from calculated data.
+- Preserve data provenance whenever possible.
+- Make freshness visible.
+- Be transparent about limitations.
+
+---
+
+## External Data Sources
+
+Collect Digital may consume data from:
+
+- Blockchain RPC providers
+- Alchemy
+- Reservoir
+- OpenSea
+- Magic Eden
+- X
+- Discord
+- Internal APIs
+- Future providers
+
+Design integrations so providers can be replaced without changing business logic.
+
+Never tightly couple the application to a single provider.
+
+---
+
+## Data Validation
+
+Always validate:
+
+- Required fields
+- Numeric ranges
+- Wallet addresses
+- Contract addresses
+- Chain IDs
+- Dates
+- URLs
+- API responses
+
+Assume external APIs can fail or return incomplete data.
+
+---
+
+## Missing Data
+
+Never replace unknown values with zero.
+
+Never silently invent default values.
+
+Instead:
+
+- Return null
+- Return undefined
+- Display "Unknown"
+- Display "Unavailable"
+- Display "Not yet indexed"
+
+Choose whichever best matches the existing architecture.
+
+---
+
+## Freshness
+
+Users should understand how current data is.
+
+Whenever practical:
+
+- Track last updated timestamps.
+- Track provider source.
+- Surface stale information.
+- Avoid presenting outdated data as current.
+
+---
+
+## Derived Metrics
+
+Keep calculated values separate from source values.
+
+Examples:
+
+- Wallet Score
+- Collection Score
+- Rarity Score
+- Holder Distribution
+- Liquidity Metrics
+
+Never overwrite raw provider data.
+
+Always calculate derived metrics from trusted source data.
+
+---
+
+## Error Handling
+
+Handle failures gracefully.
+
+Prefer:
+
+- Partial results
+- Retry mechanisms
+- Meaningful error messages
+
+Avoid:
+
+- Empty white screens
+- Silent failures
+- Fake placeholder values
+
+---
+
+## Security
+
+Never expose:
+
+- Private keys
+- Secrets
+- API credentials
+- Internal tokens
+
+Never trust client-provided blockchain data without validation.
+
+---
+
+## Architecture
+
+Prefer:
+
+- Immutable data
+- Pure transformation functions
+- Provider abstraction
+- Strong typing
+- Centralized normalization
+
+Avoid:
+
+- Business logic inside UI components
+- Duplicated parsing logic
+- Hidden side effects
+
+---
+
+## Never
+
+Never fabricate:
+
+- Wallet balances
+- NFT ownership
+- Floor prices
+- Sales history
+- Holder counts
+- Marketplace statistics
+- Social metrics
+- Trading volume
+- Blockchain transactions
+- Scores
+
+Never assume missing data means zero.
+
+Never hide uncertainty.
+
+Never silently discard provider errors.
+
+Never mix raw data with calculated values.
+
+---
+
+## Completion Checklist
+
+Before considering work complete, verify:
+
+- External data is validated.
+- Unknown values remain unknown.
+- Raw data is preserved.
+- Derived data is calculated separately.
+- Provider failures are handled gracefully.
+- Freshness is represented where appropriate.
+- No fabricated values exist.
+- User trust has been preserved.
