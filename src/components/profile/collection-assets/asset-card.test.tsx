@@ -21,10 +21,9 @@ function asset(overrides: Partial<CollectorIdentityAssetData> = {}): CollectorId
     imageUrl: null,
     collectionName: "Collection A",
     collectionFloorPriceEth: 2,
-    topTraitFloor: {
+    rarestTrait: {
       traitType: "Background",
       traitValue: "Blue",
-      floorPriceEth: 0.9,
     },
     openseaUrl: "https://opensea.io/assets/ethereum/0xabc/1",
     ...overrides,
@@ -42,6 +41,9 @@ test("AssetCard renders NFT image when image URL exists", () => {
   assert.match(html, /src="https:\/\/cdn\.example\.com\/image\.png"/);
   assert.match(html, /Highest Offer/);
   assert.match(html, /Listed Price/);
+  assert.match(html, /Rarest Trait/);
+  assert.doesNotMatch(html, /Top Trait Floor/);
+  assert.doesNotMatch(html, /Trait Floor Value/);
 });
 
 test("AssetCard shows graceful fallback when image URL is missing", () => {

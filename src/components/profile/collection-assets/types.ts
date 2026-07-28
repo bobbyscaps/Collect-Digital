@@ -15,9 +15,7 @@ export type AssetSortOption =
   | "collection_name_asc"
   | "collection_name_desc"
   | "highest_collection_floor"
-  | "lowest_collection_floor"
-  | "highest_trait_floor"
-  | "lowest_trait_floor";
+  | "lowest_collection_floor";
 
 /**
  * Additional views are intentionally declared now so future layout modes can be

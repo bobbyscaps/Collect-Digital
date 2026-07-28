@@ -74,10 +74,9 @@ export interface CollectorIdentityCollectionSummaryData {
   walletsContainingCollection: readonly string[];
 }
 
-export interface CollectorIdentityAssetTraitFloorData {
+export interface CollectorIdentityAssetRarestTraitData {
   traitType: string | null;
   traitValue: string | null;
-  floorPriceEth: number;
 }
 
 export interface CollectorIdentityAssetData {
@@ -94,7 +93,7 @@ export interface CollectorIdentityAssetData {
   rarityRank: number | null;
   collectionName: string | null;
   collectionFloorPriceEth: number | null;
-  topTraitFloor: CollectorIdentityAssetTraitFloorData | null;
+  rarestTrait: CollectorIdentityAssetRarestTraitData | null;
   openseaUrl: string;
 }
 

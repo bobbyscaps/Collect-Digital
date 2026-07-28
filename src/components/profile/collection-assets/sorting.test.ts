@@ -25,7 +25,7 @@ function asset(
     imageUrl: null,
     collectionName: null,
     collectionFloorPriceEth: null,
-    topTraitFloor: null,
+    rarestTrait: null,
     openseaUrl: "https://opensea.io/assets/ethereum/0xabc/1",
     ...overrides,
   };
@@ -40,7 +40,7 @@ test("sortAssets supports all configured sort options", () => {
     rarityRank: 10,
     collectionName: "Zeta",
     collectionFloorPriceEth: 0.5,
-    topTraitFloor: { traitType: "Hat", traitValue: "Gold", floorPriceEth: 0.9 },
+    rarestTrait: { traitType: "Hat", traitValue: "Gold" },
   });
   const beta = asset("b", {
     receivedAt: "2026-01-01T00:00:00.000Z",
@@ -50,7 +50,7 @@ test("sortAssets supports all configured sort options", () => {
     rarityRank: 100,
     collectionName: "Acme",
     collectionFloorPriceEth: 2.5,
-    topTraitFloor: { traitType: "Eyes", traitValue: "Laser", floorPriceEth: 0.2 },
+    rarestTrait: { traitType: "Eyes", traitValue: "Laser" },
   });
   const missing = asset("c");
   const input = [alpha, beta, missing] as const;
@@ -71,8 +71,6 @@ test("sortAssets supports all configured sort options", () => {
     collection_name_desc: "a",
     highest_collection_floor: "b",
     lowest_collection_floor: "a",
-    highest_trait_floor: "a",
-    lowest_trait_floor: "b",
   };
 
   for (const option of ASSET_SORT_OPTIONS) {

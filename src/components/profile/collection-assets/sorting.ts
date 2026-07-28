@@ -21,8 +21,6 @@ export const ASSET_SORT_OPTIONS: ReadonlyArray<{
   { value: "collection_name_desc", label: "Collection Name (Z-A)" },
   { value: "highest_collection_floor", label: "Highest Collection Floor" },
   { value: "lowest_collection_floor", label: "Lowest Collection Floor" },
-  { value: "highest_trait_floor", label: "Highest Trait Floor" },
-  { value: "lowest_trait_floor", label: "Lowest Trait Floor" },
 ]);
 
 function normalizeText(value: string | null) {
@@ -129,18 +127,6 @@ function compareBySortOption(
       return compareNullableNumber(
         left.collectionFloorPriceEth,
         right.collectionFloorPriceEth,
-        "asc"
-      );
-    case "highest_trait_floor":
-      return compareNullableNumber(
-        left.topTraitFloor?.floorPriceEth ?? null,
-        right.topTraitFloor?.floorPriceEth ?? null,
-        "desc"
-      );
-    case "lowest_trait_floor":
-      return compareNullableNumber(
-        left.topTraitFloor?.floorPriceEth ?? null,
-        right.topTraitFloor?.floorPriceEth ?? null,
         "asc"
       );
     default:

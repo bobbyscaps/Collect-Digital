@@ -25,7 +25,7 @@ export default function CollectionPage() {
         items={[
           "NFT images and names",
           "Token IDs and collection context",
-          "Collection floor and top trait floor",
+          "Collection floor and rarest trait",
           "Direct OpenSea asset links",
         ]}
       />

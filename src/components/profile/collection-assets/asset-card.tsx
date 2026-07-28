@@ -26,9 +26,9 @@ function imageSizeClass(size: AssetCardSize) {
   return "aspect-[5/4]";
 }
 
-function traitLabel(asset: CollectorIdentityAssetData) {
-  if (!asset.topTraitFloor) return "Unavailable";
-  const pieces = [asset.topTraitFloor.traitType, asset.topTraitFloor.traitValue].filter(
+function rarestTraitLabel(asset: CollectorIdentityAssetData) {
+  if (!asset.rarestTrait) return "Unavailable";
+  const pieces = [asset.rarestTrait.traitType, asset.rarestTrait.traitValue].filter(
     Boolean
   );
   return pieces.length > 0 ? pieces.join(": ") : "Available";
@@ -105,9 +105,9 @@ export function AssetCard({
             </dd>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted-foreground">Top Trait Floor</dt>
+            <dt className="text-muted-foreground">Rarest Trait</dt>
             <dd className="max-w-[65%] truncate text-right font-medium">
-              {traitLabel(asset)}
+              {rarestTraitLabel(asset)}
             </dd>
           </div>
           <div className="flex items-center justify-between gap-2">
@@ -120,12 +120,6 @@ export function AssetCard({
                       : ""
                   }`
                 : "Unavailable"}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted-foreground">Trait Floor Value</dt>
-            <dd className="text-right font-medium">
-              {formatEth(asset.topTraitFloor?.floorPriceEth ?? null)}
             </dd>
           </div>
         </dl>

@@ -6,7 +6,7 @@ const RESERVOIR_BASE_URL = "https://api.reservoir.tools";
 const ALCHEMY_ETHEREUM_MAINNET_NETWORK = "eth-mainnet";
 const TOKEN_BATCH_SIZE = 20;
 
-type TraitFloor = NonNullable<CollectorIdentityAssetData["topTraitFloor"]>;
+type RarestTrait = NonNullable<CollectorIdentityAssetData["rarestTrait"]>;
 
 interface AssetMetadata {
   listedPriceEth: number | null;
@@ -17,7 +17,7 @@ interface AssetMetadata {
   imageUrl: string | null;
   collectionName: string | null;
   collectionFloorPriceEth: number | null;
-  topTraitFloor: TraitFloor | null;
+  rarestTrait: RarestTrait | null;
   openseaUrl: string | null;
 }
 
@@ -194,37 +194,129 @@ function asStringAtPath(
   return asString(current);
 }
 
-function parseTopTraitFloor(attributes: unknown): TraitFloor | null {
+function deterministicTraitKeyHash(traitType: string | null, traitValue: string | null) {
+  const value = `${traitType ?? ""}\u0000${traitValue ?? ""}`;
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+  return hash >>> 0;
+}
+
+function asRarityMetric(
+  record: Record<string, unknown>,
+  paths: readonly (readonly string[])[]
+): number | null {
+  for (const path of paths) {
+    const value = asNumberAtPath(record, path);
+    if (value != null) return value;
+  }
+  return null;
+}
+
+interface CandidateRarestTrait {
+  readonly traitType: string | null;
+  readonly traitValue: string | null;
+  readonly occurrenceCount: number | null;
+  readonly prevalencePercentage: number | null;
+  readonly rarityRank: number | null;
+  readonly stableHash: number;
+}
+
+function compareTraitMetric(left: number | null, right: number | null) {
+  const leftMissing = left == null;
+  const rightMissing = right == null;
+  if (leftMissing && rightMissing) return 0;
+  if (leftMissing) return 1;
+  if (rightMissing) return -1;
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+function compareRarestTrait(
+  left: CandidateRarestTrait,
+  right: CandidateRarestTrait
+) {
+  const byCount = compareTraitMetric(left.occurrenceCount, right.occurrenceCount);
+  if (byCount !== 0) return byCount;
+
+  const byPrevalence = compareTraitMetric(
+    left.prevalencePercentage,
+    right.prevalencePercentage
+  );
+  if (byPrevalence !== 0) return byPrevalence;
+
+  const byRank = compareTraitMetric(left.rarityRank, right.rarityRank);
+  if (byRank !== 0) return byRank;
+
+  return left.stableHash - right.stableHash;
+}
+
+function parseRarestTrait(attributes: unknown): RarestTrait | null {
   if (!Array.isArray(attributes)) return null;
 
-  let topTrait: TraitFloor | null = null;
+  let rarest: CandidateRarestTrait | null = null;
   for (const attribute of attributes) {
     const record = asRecord(attribute);
     if (!record) continue;
-    const floorPriceEth =
-      asNumberAtPath(record, ["floorAskPrice", "amount", "native"]) ??
-      asNumberAtPath(record, ["floorAsk", "price", "amount", "native"]) ??
-      asNumberAtPath(record, ["floorAskPrices", "0", "price", "amount", "native"]) ??
-      asNumberAtPath(record, ["floorAskPrices", "0", "amount", "native"]) ??
-      asNumber(record.floorAskPrice) ??
-      asNumber(record.floorSellValue);
-    if (floorPriceEth == null) continue;
-    if (topTrait && topTrait.floorPriceEth >= floorPriceEth) continue;
+    const traitType =
+      asString(record.key) ??
+      asString(record.traitType) ??
+      asString(record.trait_type);
+    const traitValue =
+      asString(record.value) ??
+      asString(record.valueString) ??
+      asString(record.displayValue);
 
-    topTrait = Object.freeze({
-      traitType:
-        asString(record.key) ??
-        asString(record.traitType) ??
-        asString(record.trait_type),
-      traitValue:
-        asString(record.value) ??
-        asString(record.valueString) ??
-        asString(record.displayValue),
-      floorPriceEth,
-    });
+    if (!traitType && !traitValue) continue;
+
+    const occurrenceCount = asRarityMetric(record, [
+      ["tokenCount"],
+      ["count"],
+      ["occurrenceCount"],
+      ["stats", "count"],
+    ]);
+    const prevalencePercentage = asRarityMetric(record, [
+      ["prevalence"],
+      ["prevalencePercentage"],
+      ["percentage"],
+      ["stats", "prevalence"],
+      ["stats", "percentage"],
+    ]);
+    const rarityRank = asRarityMetric(record, [
+      ["rarityRank"],
+      ["rank"],
+      ["rarity", "rank"],
+      ["stats", "rarityRank"],
+    ]);
+
+    if (
+      occurrenceCount == null &&
+      prevalencePercentage == null &&
+      rarityRank == null
+    ) {
+      continue;
+    }
+
+    const candidate: CandidateRarestTrait = {
+      traitType,
+      traitValue,
+      occurrenceCount,
+      prevalencePercentage,
+      rarityRank,
+      stableHash: deterministicTraitKeyHash(traitType, traitValue),
+    };
+
+    if (!rarest || compareRarestTrait(candidate, rarest) < 0) {
+      rarest = candidate;
+    }
   }
 
-  return topTrait;
+  if (!rarest) return null;
+  return Object.freeze({
+    traitType: rarest.traitType,
+    traitValue: rarest.traitValue,
+  });
 }
 
 function classifyBidScope(topBid: Record<string, unknown> | null) {
@@ -322,7 +414,7 @@ function parseTokenMetadata(entry: unknown): {
       ),
       collectionName: asString(collection?.name),
       collectionFloorPriceEth: collectionFloor,
-      topTraitFloor: parseTopTraitFloor(token.attributes),
+      rarestTrait: parseRarestTrait(token.attributes),
       openseaUrl:
         asString(token.openseaUrl) ??
         asStringAtPath(token, ["metadata", "openseaUrl"]) ??
@@ -362,6 +454,9 @@ function parseAlchemyTokenMetadata(payload: unknown): {
   const collectionFloorPriceEth =
     asNumberAtPath(record, ["contract", "openSeaMetadata", "floorPrice"]) ??
     asNumberAtPath(record, ["contract", "floorPrice"]);
+  const raw = asRecord(record.raw);
+  const rawMetadata = asRecord(raw?.metadata);
+  const rarestTrait = parseRarestTrait(rawMetadata?.attributes);
 
   return {
     metadata: {
@@ -373,7 +468,7 @@ function parseAlchemyTokenMetadata(payload: unknown): {
       imageUrl: selectAlchemyImage(record),
       collectionName,
       collectionFloorPriceEth,
-      topTraitFloor: null,
+      rarestTrait,
       openseaUrl: null,
     },
   };
@@ -774,7 +869,7 @@ export function createCollectorIdentityAssetService(options: {
               collectionMetadata?.floorPriceEth ??
               alchemyMetadata?.collectionFloorPriceEth ??
               null,
-            topTraitFloor: tokenMetadata?.topTraitFloor ?? null,
+            rarestTrait: tokenMetadata?.rarestTrait ?? null,
             openseaUrl:
               tokenMetadata?.openseaUrl ??
               buildOpenSeaAssetUrl(

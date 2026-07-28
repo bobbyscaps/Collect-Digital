@@ -51,7 +51,7 @@ test("asset service builds deterministic fallback assets without remote fetch", 
   );
 });
 
-test("asset service maps reservoir token and trait floor metadata", async () => {
+test("asset service maps reservoir token metadata and rarest trait", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = input.toString();
@@ -72,8 +72,8 @@ test("asset service maps reservoir token and trait floor metadata", async () => 
                 },
                 rarityRank: 42,
                 attributes: [
-                  { key: "Background", value: "Blue", floorAskPrice: { amount: { native: 0.4 } } },
-                  { key: "Hat", value: "Gold", floorAskPrice: { amount: { native: 0.9 } } },
+                  { key: "Background", value: "Blue", tokenCount: 120, prevalence: 12.5 },
+                  { key: "Hat", value: "Gold", tokenCount: 5, prevalence: 0.5 },
                 ],
               },
               market: {
@@ -121,9 +121,99 @@ test("asset service maps reservoir token and trait floor metadata", async () => 
     assert.equal(assets[0].rarityRank, 42);
     assert.equal(assets[0].collectionName, "Test Collection");
     assert.equal(assets[0].collectionFloorPriceEth, 1.2);
-    assert.equal(assets[0].topTraitFloor?.traitType, "Hat");
-    assert.equal(assets[0].topTraitFloor?.traitValue, "Gold");
-    assert.equal(assets[0].topTraitFloor?.floorPriceEth, 0.9);
+    assert.equal(assets[0].rarestTrait?.traitType, "Hat");
+    assert.equal(assets[0].rarestTrait?.traitValue, "Gold");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rarest trait tie-break is deterministic when rarity signals are equal", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url.includes("/tokens/v7")) {
+      return new Response(
+        JSON.stringify({
+          tokens: [
+            {
+              token: {
+                chain: "ethereum",
+                contract: "0xABC0000000000000000000000000000000000000",
+                tokenId: "1",
+                attributes: [
+                  { key: "Trait A", value: "Value 1", tokenCount: 10, prevalence: 1 },
+                  { key: "Trait B", value: "Value 2", tokenCount: 10, prevalence: 1 },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200 }
+      );
+    }
+    if (url.includes("/collections/v7")) {
+      return new Response(JSON.stringify({ collections: [] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const service = createCollectorIdentityAssetService();
+    const firstRun = await service.buildAssets([holding({ tokenId: "1" })]);
+    const secondRun = await service.buildAssets([holding({ tokenId: "1" })]);
+
+    assert.deepEqual(firstRun[0].rarestTrait, secondRun[0].rarestTrait);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rarest trait remains unavailable when attributes lack rarity statistics", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url.includes("/tokens/v7")) {
+      return new Response(JSON.stringify({ tokens: [] }), { status: 200 });
+    }
+    if (url.includes("/collections/v7")) {
+      return new Response(JSON.stringify({ collections: [] }), { status: 200 });
+    }
+    if (url.includes("/getNFTMetadata")) {
+      return new Response(
+        JSON.stringify({
+          name: "Static Trait NFT",
+          collection: { name: "Static Trait Collection" },
+          raw: {
+            metadata: {
+              attributes: [
+                { trait_type: "Background", value: "Blue" },
+                { trait_type: "Body", value: "Robot" },
+              ],
+            },
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    if (url.includes("/getFloorPrice")) {
+      return new Response(
+        JSON.stringify({
+          openSea: { floorPrice: null, error: "not available" },
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const service = createCollectorIdentityAssetService({
+      reservoirApiKey: "reservoir-test",
+      alchemyApiKey: "alchemy-test",
+    });
+    const assets = await service.buildAssets([holding({ tokenId: "99" })]);
+    assert.equal(assets[0].rarestTrait, null);
   } finally {
     globalThis.fetch = originalFetch;
   }
