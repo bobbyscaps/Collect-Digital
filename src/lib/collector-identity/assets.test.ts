@@ -128,7 +128,7 @@ test("asset service maps reservoir token metadata and rarest trait", async () =>
   }
 });
 
-test("rarest trait tie-break is deterministic when rarity signals are equal", async () => {
+test("rarest trait tie-break uses normalized trait type then value", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = input.toString();
@@ -142,8 +142,8 @@ test("rarest trait tie-break is deterministic when rarity signals are equal", as
                 contract: "0xABC0000000000000000000000000000000000000",
                 tokenId: "1",
                 attributes: [
-                  { key: "Trait A", value: "Value 1", tokenCount: 10, prevalence: 1 },
-                  { key: "Trait B", value: "Value 2", tokenCount: 10, prevalence: 1 },
+                  { key: "zeta", value: "value 1", tokenCount: 10, prevalence: 1 },
+                  { key: "Alpha", value: "value 2", tokenCount: 10, prevalence: 1 },
                 ],
               },
             },
@@ -160,10 +160,11 @@ test("rarest trait tie-break is deterministic when rarity signals are equal", as
 
   try {
     const service = createCollectorIdentityAssetService();
-    const firstRun = await service.buildAssets([holding({ tokenId: "1" })]);
-    const secondRun = await service.buildAssets([holding({ tokenId: "1" })]);
-
-    assert.deepEqual(firstRun[0].rarestTrait, secondRun[0].rarestTrait);
+    const assets = await service.buildAssets([holding({ tokenId: "1" })]);
+    assert.deepEqual(assets[0].rarestTrait, {
+      traitType: "Alpha",
+      traitValue: "value 2",
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -214,6 +215,48 @@ test("rarest trait remains unavailable when attributes lack rarity statistics", 
     });
     const assets = await service.buildAssets([holding({ tokenId: "99" })]);
     assert.equal(assets[0].rarestTrait, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rarest trait falls back to provider rarity rank when counts are unavailable", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input.toString();
+    if (url.includes("/tokens/v7")) {
+      return new Response(
+        JSON.stringify({
+          tokens: [
+            {
+              token: {
+                chain: "ethereum",
+                contract: "0xABC0000000000000000000000000000000000000",
+                tokenId: "1",
+                attributes: [
+                  { key: "Mouth", value: "Smile", rarityRank: 120 },
+                  { key: "Eyes", value: "Laser", rarityRank: 4 },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200 }
+      );
+    }
+    if (url.includes("/collections/v7")) {
+      return new Response(JSON.stringify({ collections: [] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const service = createCollectorIdentityAssetService();
+    const assets = await service.buildAssets([holding({ tokenId: "1" })]);
+    assert.deepEqual(assets[0].rarestTrait, {
+      traitType: "Eyes",
+      traitValue: "Laser",
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

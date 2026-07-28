@@ -194,15 +194,6 @@ function asStringAtPath(
   return asString(current);
 }
 
-function deterministicTraitKeyHash(traitType: string | null, traitValue: string | null) {
-  const value = `${traitType ?? ""}\u0000${traitValue ?? ""}`;
-  let hash = 5381;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 33) ^ value.charCodeAt(index);
-  }
-  return hash >>> 0;
-}
-
 function asRarityMetric(
   record: Record<string, unknown>,
   paths: readonly (readonly string[])[]
@@ -220,7 +211,6 @@ interface CandidateRarestTrait {
   readonly occurrenceCount: number | null;
   readonly prevalencePercentage: number | null;
   readonly rarityRank: number | null;
-  readonly stableHash: number;
 }
 
 function compareTraitMetric(left: number | null, right: number | null) {
@@ -249,7 +239,14 @@ function compareRarestTrait(
   const byRank = compareTraitMetric(left.rarityRank, right.rarityRank);
   if (byRank !== 0) return byRank;
 
-  return left.stableHash - right.stableHash;
+  const normalizedLeftType = (left.traitType ?? "").trim().toLowerCase();
+  const normalizedRightType = (right.traitType ?? "").trim().toLowerCase();
+  const byType = normalizedLeftType.localeCompare(normalizedRightType);
+  if (byType !== 0) return byType;
+
+  const normalizedLeftValue = (left.traitValue ?? "").trim().toLowerCase();
+  const normalizedRightValue = (right.traitValue ?? "").trim().toLowerCase();
+  return normalizedLeftValue.localeCompare(normalizedRightValue);
 }
 
 function parseRarestTrait(attributes: unknown): RarestTrait | null {
@@ -270,25 +267,18 @@ function parseRarestTrait(attributes: unknown): RarestTrait | null {
 
     if (!traitType && !traitValue) continue;
 
+    // Rarity metrics are intentionally constrained to verified provider
+    // attribute fields; do not infer semantics from arbitrary "rank/score"-like keys.
     const occurrenceCount = asRarityMetric(record, [
       ["tokenCount"],
-      ["count"],
       ["occurrenceCount"],
-      ["stats", "count"],
     ]);
     const prevalencePercentage = asRarityMetric(record, [
       ["prevalence"],
       ["prevalencePercentage"],
       ["percentage"],
-      ["stats", "prevalence"],
-      ["stats", "percentage"],
     ]);
-    const rarityRank = asRarityMetric(record, [
-      ["rarityRank"],
-      ["rank"],
-      ["rarity", "rank"],
-      ["stats", "rarityRank"],
-    ]);
+    const rarityRank = asRarityMetric(record, [["rarityRank"]]);
 
     if (
       occurrenceCount == null &&
@@ -304,7 +294,6 @@ function parseRarestTrait(attributes: unknown): RarestTrait | null {
       occurrenceCount,
       prevalencePercentage,
       rarityRank,
-      stableHash: deterministicTraitKeyHash(traitType, traitValue),
     };
 
     if (!rarest || compareRarestTrait(candidate, rarest) < 0) {
