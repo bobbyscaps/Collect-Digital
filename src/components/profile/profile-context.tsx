@@ -16,6 +16,7 @@ import {
 } from "@/lib/collector-identity/client";
 import {
   loadingSection,
+  type CollectorIdentityAssetData,
   type CollectorIdentityCollectionSummaryData,
   type CollectorIdentityIdentityData,
   type CollectorIdentityInventoryData,
@@ -69,6 +70,7 @@ function loadingIdentity(profileId: string): CollectorIdentityResponse {
     inventory: loadingSection<CollectorIdentityInventoryData>(),
     collectionSummaries:
       loadingSection<readonly CollectorIdentityCollectionSummaryData[]>(),
+    assets: loadingSection<readonly CollectorIdentityAssetData[]>(),
     statusModules: {
       collectorScore: loadingSection<null>(),
       collectionScores: loadingSection<null>(),

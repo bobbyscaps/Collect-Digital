@@ -10,12 +10,15 @@ import {
   comingSoonSection,
   emptySection,
   errorSection,
+  type CollectorIdentityAssetData,
   type CollectorIdentityCollectionSummaryData,
   type CollectorIdentityInventoryData,
   type CollectorIdentityResponse,
+  type ProgressiveDataState,
   type CollectorIdentityWalletsData,
   type ProgressiveSection,
 } from "@/lib/collector-identity/api-models";
+import type { CollectorIdentityAssetService } from "@/lib/collector-identity/assets";
 import type { ProfileWalletRepository } from "@/lib/profile-wallets/repository";
 import type { WalletInventoryRepository } from "@/lib/wallet-inventory/repository";
 import type { AuthenticatedProfileContext } from "@/lib/wallet-verification/auth-context";
@@ -42,6 +45,7 @@ export interface CreateCollectorIdentityServiceOptions {
   profileWallets: ProfileWalletRepository;
   inventory: WalletInventoryRepository;
   analysis: CollectorAnalysisService;
+  assetService: CollectorIdentityAssetService;
 }
 
 function comingSoonStatusModules(): CollectorIdentityResponse["statusModules"] {
@@ -111,6 +115,48 @@ function walletsFromVerified(
     state: "live",
     data: Object.freeze(data),
     lastUpdatedAt: null,
+    message: null,
+  };
+}
+
+async function assetsFromHoldings(
+  assetService: CollectorIdentityAssetService,
+  input: {
+    holdings: CollectorInventoryAnalysis["holdings"];
+    inventoryState: ProgressiveDataState;
+    lastUpdatedAt: string | null;
+  }
+): Promise<ProgressiveSection<readonly CollectorIdentityAssetData[]>> {
+  const assets = await assetService.buildAssets(input.holdings);
+  if (assets.length === 0) {
+    return emptySection<readonly CollectorIdentityAssetData[]>(
+      "No NFT assets found in synced wallets yet."
+    );
+  }
+
+  if (input.inventoryState === "stale") {
+    return {
+      state: "stale",
+      data: assets,
+      lastUpdatedAt: input.lastUpdatedAt,
+      message:
+        "Showing last successfully persisted assets. Live metadata refresh is unavailable.",
+    };
+  }
+
+  if (input.inventoryState === "partial" || input.inventoryState === "empty") {
+    return {
+      state: "partial",
+      data: assets,
+      lastUpdatedAt: input.lastUpdatedAt,
+      message: "Some verified wallets have not synced successfully yet.",
+    };
+  }
+
+  return {
+    state: "live",
+    data: assets,
+    lastUpdatedAt: input.lastUpdatedAt,
     message: null,
   };
 }
@@ -216,6 +262,7 @@ function inventoryFromAnalysis(analysis: CollectorInventoryAnalysis): {
 
 async function staleInventoryFallback(
   inventory: WalletInventoryRepository,
+  assetService: CollectorIdentityAssetService,
   verifiedWalletIds: readonly string[],
   cause: unknown
 ): Promise<{
@@ -223,6 +270,7 @@ async function staleInventoryFallback(
   collectionSummaries: ProgressiveSection<
     readonly CollectorIdentityCollectionSummaryData[]
   >;
+  assets: ProgressiveSection<readonly CollectorIdentityAssetData[]>;
 }> {
   try {
     const [holdings, lastUpdatedAt] = await Promise.all([
@@ -273,6 +321,11 @@ async function staleInventoryFallback(
           message:
             "Collection summaries unavailable from live analysis; last sync time shown.",
         },
+        assets: await assetsFromHoldings(assetService, {
+          holdings: Object.freeze(holdings),
+          inventoryState: "stale",
+          lastUpdatedAt,
+        }),
       };
     }
   } catch {
@@ -293,6 +346,7 @@ async function staleInventoryFallback(
     collectionSummaries: errorSection<
       readonly CollectorIdentityCollectionSummaryData[]
     >(message),
+    assets: errorSection<readonly CollectorIdentityAssetData[]>(message),
   };
 }
 
@@ -358,6 +412,7 @@ export function createCollectorIdentityService(
       let collectionSummaries: ProgressiveSection<
         readonly CollectorIdentityCollectionSummaryData[]
       >;
+      let assets: ProgressiveSection<readonly CollectorIdentityAssetData[]>;
 
       if (wallets.state === "error") {
         // Registry unavailable — do not imply the user simply lacks wallets.
@@ -371,6 +426,10 @@ export function createCollectorIdentityService(
           wallets.message ??
             "Wallet verification is temporarily unavailable. Please try again shortly."
         );
+        assets = errorSection<readonly CollectorIdentityAssetData[]>(
+          wallets.message ??
+            "Wallet verification is temporarily unavailable. Please try again shortly."
+        );
       } else if (verifiedWalletIds.length === 0) {
         // Empty inventory is valid; UI uses the single Verify Wallet empty state
         // and must not render this section message a second time.
@@ -380,6 +439,9 @@ export function createCollectorIdentityService(
         collectionSummaries = emptySection<
           readonly CollectorIdentityCollectionSummaryData[]
         >("Verify a wallet to see collection summaries.");
+        assets = emptySection<readonly CollectorIdentityAssetData[]>(
+          "Verify a wallet to view NFT assets."
+        );
       } else {
         try {
           const analysis = await options.analysis.analyzeCollectorInventory({
@@ -398,9 +460,15 @@ export function createCollectorIdentityService(
 
           ({ inventory, collectionSummaries } =
             inventoryFromAnalysis(analysis));
+          assets = await assetsFromHoldings(options.assetService, {
+            holdings: analysis.holdings,
+            inventoryState: inventory.state,
+            lastUpdatedAt: inventory.lastUpdatedAt,
+          });
         } catch (cause) {
-          ({ inventory, collectionSummaries } = await staleInventoryFallback(
+          ({ inventory, collectionSummaries, assets } = await staleInventoryFallback(
             options.inventory,
+            options.assetService,
             verifiedWalletIds,
             cause
           ));
@@ -414,6 +482,7 @@ export function createCollectorIdentityService(
         wallets,
         inventory,
         collectionSummaries,
+        assets,
         statusModules: comingSoonStatusModules(),
         achievements: comingSoonSection("Achievements coming soon"),
       });
