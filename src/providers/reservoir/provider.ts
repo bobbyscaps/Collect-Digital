@@ -15,6 +15,7 @@ import type {
 
 const RESERVOIR_BASE_URL = "https://api.reservoir.tools";
 const CACHE_TTL_MS = 1000 * 60 * 15;
+const RESERVOIR_ORDER_PAGE_LIMIT = 200;
 
 function looksLikeContractAddress(value: string) {
   return /^0x[a-f0-9]{40}$/i.test(value.trim());
@@ -76,6 +77,41 @@ function toIsoTimestamp(value: unknown): string | null {
     return new Date(ms).toISOString();
   }
   return null;
+}
+
+function toContinuation(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function isSortedByPriceDesc(offers: readonly NormalizedOffer[]): boolean {
+  for (let index = 1; index < offers.length; index += 1) {
+    if (offers[index - 1].priceEth < offers[index].priceEth) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function mapReservoirBidOrderToNormalizedOffer(
+  order: Record<string, unknown>
+): NormalizedOffer {
+  return {
+    tokenId: String(order.tokenSetId ?? ""),
+    priceEth: toEth(
+      (order.price as { amount?: { native?: number } } | undefined)?.amount?.native
+    ),
+    marketplace: String(order.source?.toString() ?? ""),
+    maker: String(order.maker ?? ""),
+    createdAt: String(order.createdAt ?? ""),
+  };
+}
+
+export interface ReservoirOffersPageResult {
+  offers: NormalizedOffer[];
+  continuation: string | null;
+  sortedByPriceDesc: boolean;
 }
 
 /** Normalize a Reservoir timestamp (ISO string or unix seconds) to epoch ms. */
@@ -285,27 +321,55 @@ export class ReservoirProvider implements NftDataProvider {
     options?: ProviderQueryOptions
   ): Promise<NormalizedOffer[]> {
     try {
-      type Response = { orders: Record<string, unknown>[] };
-      const limit = options?.limit ?? 30;
-      const data = await this.fetchJson<Response>(
-        `/orders/bids/v6?collection=${encodeURIComponent(
-          collectionId
-        )}&sortBy=price&limit=${limit}`
-      );
-      return (data.orders ?? []).map((order) => ({
-        tokenId: String(order.tokenSetId ?? ""),
-        priceEth: toEth(
-          (
-            order.price as { amount?: { native?: number } } | undefined
-          )?.amount?.native
-        ),
-        marketplace: String(order.source?.toString() ?? ""),
-        maker: String(order.maker ?? ""),
-        createdAt: String(order.createdAt ?? ""),
-      }));
+      const requested = Math.max(1, options?.limit ?? 30);
+      const offers: NormalizedOffer[] = [];
+      let continuation: string | null = null;
+
+      do {
+        const page = await this.getOffersPage(collectionId, {
+          limit: Math.min(RESERVOIR_ORDER_PAGE_LIMIT, requested - offers.length),
+          continuation,
+        });
+        offers.push(...page.offers);
+        continuation = page.continuation;
+      } while (continuation && offers.length < requested);
+
+      return offers.slice(0, requested);
     } catch {
       return [];
     }
+  }
+
+  async getOffersPage(
+    collectionId: string,
+    options?: {
+      limit?: number;
+      continuation?: string | null;
+    }
+  ): Promise<ReservoirOffersPageResult> {
+    type Response = {
+      orders?: Record<string, unknown>[];
+      continuation?: string | null;
+    };
+    const limit = Math.max(
+      1,
+      Math.min(RESERVOIR_ORDER_PAGE_LIMIT, options?.limit ?? 30)
+    );
+    const continuation = options?.continuation ? options.continuation.trim() : "";
+    const continuationQuery = continuation
+      ? `&continuation=${encodeURIComponent(continuation)}`
+      : "";
+    const data = await this.fetchJson<Response>(
+      `/orders/bids/v6?collection=${encodeURIComponent(
+        collectionId
+      )}&sortBy=price&sortDirection=desc&limit=${limit}${continuationQuery}`
+    );
+    const offers = (data.orders ?? []).map(mapReservoirBidOrderToNormalizedOffer);
+    return {
+      offers,
+      continuation: toContinuation(data.continuation),
+      sortedByPriceDesc: isSortedByPriceDesc(offers),
+    };
   }
 
   async getSales(

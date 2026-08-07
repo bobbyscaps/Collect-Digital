@@ -18,12 +18,14 @@ import type {
   NormalizedOffer,
   NormalizedSale,
 } from "@/providers/types";
+import type { ReservoirOffersPageResult } from "@/providers/reservoir/provider";
 import { ReservoirProvider } from "@/providers/reservoir/provider";
 
-const DEFAULT_OFFERS_LIMIT = 200;
+const DEFAULT_OFFER_PAGE_LIMIT = 200;
 const DEFAULT_LISTINGS_LIMIT = 200;
 const DEFAULT_SALES_LIMIT = 400;
 const DEFAULT_NEAR_FLOOR_BAND_PCT = 20;
+const MAX_OFFER_PAGINATION_PAGES = 60;
 
 type IngestionComponentName = "collection" | "market" | "sales" | "traits";
 
@@ -71,6 +73,10 @@ interface ReservoirCollectionFactsDataSource {
     collectionId: string,
     options?: { limit?: number }
   ): Promise<NormalizedOffer[]>;
+  getOffersPage?: (
+    collectionId: string,
+    options?: { limit?: number; continuation?: string | null }
+  ) => Promise<ReservoirOffersPageResult>;
   getListings(
     collectionId: string,
     options?: { limit?: number }
@@ -145,32 +151,130 @@ function inRange(
   return true;
 }
 
-function computeNearFloorOfferValue(input: {
+interface NearFloorOfferDepthResult {
+  nearFloorOfferValueNative: number | null;
+  activeOfferCount: number | null;
+  completenessStatus: "complete" | "partial";
+  endpoint: string;
+  details: string;
+}
+
+async function fetchNearFloorOfferDepth(input: {
+  reservoir: ReservoirCollectionFactsDataSource;
+  collectionSlug: string;
   floorPriceNative: number | null;
-  offers: readonly NormalizedOffer[];
   nearFloorBandPct: number;
-}): { nearFloorOfferValueNative: number | null; activeOfferCount: number | null } {
+  offersPageLimit: number;
+}): Promise<NearFloorOfferDepthResult> {
   const floor = input.floorPriceNative;
   if (floor == null || floor <= 0) {
     return {
       nearFloorOfferValueNative: null,
-      activeOfferCount: input.offers.length,
+      activeOfferCount: null,
+      completenessStatus: "partial",
+      endpoint: "/orders/bids/v6",
+      details: "Floor price unavailable; near-floor offer depth cannot be computed.",
     };
   }
 
   const minPrice = floor * (1 - input.nearFloorBandPct / 100);
-  const relevantOffers = input.offers.filter(
-    (offer) => offer.priceEth >= minPrice && offer.priceEth <= floor
-  );
-  const nearFloorOfferValueNative = relevantOffers.reduce(
-    (total, offer) => total + offer.priceEth,
-    0
-  );
 
-  return {
-    nearFloorOfferValueNative,
-    activeOfferCount: input.offers.length,
-  };
+  if (!input.reservoir.getOffersPage) {
+    return {
+      nearFloorOfferValueNative: null,
+      activeOfferCount: null,
+      completenessStatus: "partial",
+      endpoint: "/orders/bids/v6",
+      details:
+        "Offer continuation pagination is unavailable for this provider adapter; near-floor liquidity cannot be confirmed complete.",
+    };
+  }
+
+  const offersPageLimit = Math.max(1, Math.min(200, input.offersPageLimit));
+  let continuation: string | null = null;
+  let pageCount = 0;
+  let nearFloorOfferValueNative = 0;
+  let activeOfferCount = 0;
+  let previousPageMinPrice: number | null = null;
+  let orderingGuaranteedAcrossPages = true;
+  let hitBelowThresholdWithOrdering = false;
+
+  while (true) {
+    if (pageCount >= MAX_OFFER_PAGINATION_PAGES) {
+      return {
+        nearFloorOfferValueNative: null,
+        activeOfferCount: null,
+        completenessStatus: "partial",
+        endpoint: "/orders/bids/v6",
+        details:
+          "Offer pagination exceeded safety page cap before confirming complete qualifying depth.",
+      };
+    }
+
+    const page = await input.reservoir.getOffersPage(input.collectionSlug, {
+      limit: offersPageLimit,
+      continuation,
+    });
+    pageCount += 1;
+    const pageOffers = page.offers;
+    activeOfferCount += pageOffers.length;
+
+    const pageQualifyingValue = pageOffers
+      .filter((offer) => offer.priceEth >= minPrice && offer.priceEth <= floor)
+      .reduce((total, offer) => total + offer.priceEth, 0);
+    nearFloorOfferValueNative += pageQualifyingValue;
+
+    const pageBelowThreshold = pageOffers.some((offer) => offer.priceEth < minPrice);
+    const pageMaxPrice =
+      pageOffers.length > 0
+        ? pageOffers.reduce((max, offer) => Math.max(max, offer.priceEth), pageOffers[0].priceEth)
+        : null;
+    const pageMinPrice =
+      pageOffers.length > 0
+        ? pageOffers.reduce((min, offer) => Math.min(min, offer.priceEth), pageOffers[0].priceEth)
+        : null;
+
+    if (!page.sortedByPriceDesc) {
+      orderingGuaranteedAcrossPages = false;
+    }
+    if (
+      previousPageMinPrice != null &&
+      pageMaxPrice != null &&
+      pageMaxPrice > previousPageMinPrice
+    ) {
+      orderingGuaranteedAcrossPages = false;
+    }
+    if (pageMinPrice != null) {
+      previousPageMinPrice = pageMinPrice;
+    }
+
+    continuation = page.continuation;
+
+    if (!continuation) {
+      return {
+        nearFloorOfferValueNative,
+        activeOfferCount,
+        completenessStatus: "complete",
+        endpoint: "/orders/bids/v6",
+        details: `Offer depth scanned through final page (${pageCount} page(s)).`,
+      };
+    }
+
+    if (orderingGuaranteedAcrossPages && pageBelowThreshold) {
+      hitBelowThresholdWithOrdering = true;
+    }
+
+    if (hitBelowThresholdWithOrdering) {
+      return {
+        nearFloorOfferValueNative,
+        activeOfferCount: null,
+        completenessStatus: "complete",
+        endpoint: "/orders/bids/v6",
+        details:
+          "Offer pagination stopped early after crossing threshold with stable descending price ordering.",
+      };
+    }
+  }
 }
 
 function resolveSalesCompleteness(input: {
@@ -319,35 +423,33 @@ export function createReservoirCollectionFactsIngestionService(
           const observedAt = request.observedAt ?? nowIso(now);
           const ingestedAt = nowIso(now);
           const listingsLimit = request.listingsLimit ?? DEFAULT_LISTINGS_LIMIT;
-          const offersLimit = request.offersLimit ?? DEFAULT_OFFERS_LIMIT;
+          const offersPageLimit = request.offersLimit ?? DEFAULT_OFFER_PAGE_LIMIT;
           const salesLimit = request.salesLimit ?? DEFAULT_SALES_LIMIT;
           const nearFloorBandPct =
             request.nearFloorBandPct ?? DEFAULT_NEAR_FLOOR_BAND_PCT;
 
-          const [offersResult, listingsResult, salesResult] = await Promise.allSettled([
-            options.reservoir.getOffers(collection.slug, { limit: offersLimit }),
+          const [offerDepthResult, listingsResult, salesResult] = await Promise.allSettled([
+            fetchNearFloorOfferDepth({
+              reservoir: options.reservoir,
+              collectionSlug: collection.slug,
+              floorPriceNative: Number.isFinite(collection.floor)
+                ? collection.floor
+                : null,
+              nearFloorBandPct,
+              offersPageLimit,
+            }),
             options.reservoir.getListings(collection.slug, { limit: listingsLimit }),
             options.reservoir.getSales(collection.slug, { limit: salesLimit }),
           ]);
 
           // Market facts
           try {
-            const offers =
-              offersResult.status === "fulfilled"
-                ? offersResult.value
-                : ([] as NormalizedOffer[]);
             const listings =
               listingsResult.status === "fulfilled"
                 ? listingsResult.value
                 : ([] as NormalizedListing[]);
-
-            const nearFloor = computeNearFloorOfferValue({
-              floorPriceNative: Number.isFinite(collection.floor)
-                ? collection.floor
-                : null,
-              offers,
-              nearFloorBandPct,
-            });
+            const offerDepth =
+              offerDepthResult.status === "fulfilled" ? offerDepthResult.value : null;
             const supply = collection.supply ?? null;
             const listedCount =
               collection.listedCount ??
@@ -360,7 +462,7 @@ export function createReservoirCollectionFactsIngestionService(
                 : null;
 
             const marketCompleteness: "complete" | "partial" =
-              offersResult.status === "fulfilled" &&
+              offerDepth?.completenessStatus === "complete" &&
               (listingsResult.status === "fulfilled" || listedCount != null)
                 ? "complete"
                 : "partial";
@@ -379,8 +481,8 @@ export function createReservoirCollectionFactsIngestionService(
                 topOfferNative: Number.isFinite(collection.topOffer)
                   ? collection.topOffer
                   : null,
-                nearFloorOfferValueNative: nearFloor.nearFloorOfferValueNative,
-                activeOfferCount: nearFloor.activeOfferCount,
+                nearFloorOfferValueNative: offerDepth?.nearFloorOfferValueNative ?? null,
+                activeOfferCount: offerDepth?.activeOfferCount ?? null,
                 activeListingCount: listedCount,
                 listedPct,
                 totalSupply: supply,
@@ -395,12 +497,12 @@ export function createReservoirCollectionFactsIngestionService(
             );
             marketSnapshot = written[0] ?? null;
 
-            if (offersResult.status === "rejected") {
+            if (offerDepthResult.status === "rejected") {
               errors.push(
-                `Offers endpoint failed: ${
-                  offersResult.reason instanceof Error
-                    ? offersResult.reason.message
-                    : String(offersResult.reason)
+                `Near-floor offer depth failed: ${
+                  offerDepthResult.reason instanceof Error
+                    ? offerDepthResult.reason.message
+                    : String(offerDepthResult.reason)
                 }`
               );
             }
@@ -416,14 +518,16 @@ export function createReservoirCollectionFactsIngestionService(
             componentResults.market = {
               status:
                 marketCompleteness === "complete" &&
-                offersResult.status === "fulfilled" &&
+                offerDepthResult.status === "fulfilled" &&
                 (listingsResult.status === "fulfilled" || listedCount != null)
                   ? "success"
                   : "partial",
               details:
                 marketCompleteness === "complete"
                   ? "Market snapshot persisted from Reservoir collection/offer/listing facts."
-                  : "Market snapshot persisted with partial offer/listing coverage.",
+                  : `Market snapshot persisted with partial coverage. ${
+                      offerDepth?.details ?? "Offer depth unavailable."
+                    }`,
             };
           } catch (error) {
             const message =

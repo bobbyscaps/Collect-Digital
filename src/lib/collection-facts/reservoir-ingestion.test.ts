@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { createInMemoryCollectionFactsRepository } from "@/lib/collection-facts/repository";
 import { createReservoirCollectionFactsIngestionService } from "@/lib/collection-facts/reservoir-ingestion";
+import type { ReservoirOffersPageResult } from "@/providers/reservoir/provider";
 import type {
   NormalizedCollection,
   NormalizedListing,
@@ -16,11 +17,16 @@ type FakeReservoir = {
     collectionId: string,
     options?: { limit?: number }
   ) => Promise<NormalizedOffer[]>;
+  getOffersPage?: (
+    collectionId: string,
+    options?: { limit?: number; continuation?: string | null }
+  ) => Promise<ReservoirOffersPageResult>;
   getListings: (
     collectionId: string,
     options?: { limit?: number }
   ) => Promise<NormalizedListing[]>;
   getSales: (collectionId: string, options?: { limit?: number }) => Promise<NormalizedSale[]>;
+  getOfferPageCallCount: () => number;
 };
 
 const BASE_COLLECTION: NormalizedCollection = {
@@ -50,24 +56,59 @@ const BASE_COLLECTION: NormalizedCollection = {
 function buildFakeReservoir(overrides?: {
   collection?: NormalizedCollection | null;
   offers?: NormalizedOffer[];
+  offersPages?: NormalizedOffer[][];
+  offersPagesSortedDesc?: boolean[];
   listings?: NormalizedListing[];
   sales?: NormalizedSale[];
   offerError?: Error;
+  offerErrorPage?: number;
   salesError?: Error;
+  disableOffersPagination?: boolean;
 }): FakeReservoir {
+  const offersPages =
+    overrides?.offersPages ?? [
+      overrides?.offers ?? [
+        { priceEth: 1.95, marketplace: "opensea" },
+        { priceEth: 1.7, marketplace: "blur" },
+        { priceEth: 1.3, marketplace: "blur" },
+      ],
+    ];
+  let offerPageCallCount = 0;
+
   return {
     async getCollection() {
       return overrides?.collection ?? BASE_COLLECTION;
     },
     async getOffers() {
-      if (overrides?.offerError) throw overrides.offerError;
-      return (
-        overrides?.offers ?? [
-          { priceEth: 1.95, marketplace: "opensea" },
-          { priceEth: 1.7, marketplace: "blur" },
-          { priceEth: 1.3, marketplace: "blur" },
-        ]
-      );
+      if (overrides?.offerError && (overrides.offerErrorPage ?? 1) === 1) {
+        throw overrides.offerError;
+      }
+      return offersPages.flat();
+    },
+    getOffersPage: overrides?.disableOffersPagination
+      ? undefined
+      : async (_collectionId, options) => {
+          offerPageCallCount += 1;
+          if (
+            overrides?.offerError &&
+            (overrides.offerErrorPage ?? 1) === offerPageCallCount
+          ) {
+            throw overrides.offerError;
+          }
+          const continuationToken = options?.continuation?.trim() ?? "";
+          const pageIndex = continuationToken ? Number(continuationToken) : 0;
+          const pageOffers = offersPages[pageIndex] ?? [];
+          const nextContinuation =
+            pageIndex + 1 < offersPages.length ? String(pageIndex + 1) : null;
+          return {
+            offers: pageOffers,
+            continuation: nextContinuation,
+            sortedByPriceDesc:
+              overrides?.offersPagesSortedDesc?.[pageIndex] ?? true,
+          };
+        },
+    getOfferPageCallCount() {
+      return offerPageCallCount;
     },
     async getListings() {
       return overrides?.listings ?? [{ tokenId: "set:azuki", priceEth: 2.1 }];
@@ -107,12 +148,13 @@ function buildFakeReservoir(overrides?: {
 
 test("reservoir ingestion resolves identity, persists aliases, and is idempotent on rerun", async () => {
   const repository = createInMemoryCollectionFactsRepository();
-  const ingestion = createReservoirCollectionFactsIngestionService({
+  const fakeReservoir = buildFakeReservoir();
+  const ingestionWithTracker = createReservoirCollectionFactsIngestionService({
     facts: repository,
-    reservoir: buildFakeReservoir(),
+    reservoir: fakeReservoir,
   });
 
-  const firstRun = await ingestion.ingestCollectionFacts({
+  const firstRun = await ingestionWithTracker.ingestCollectionFacts({
     collectionRef: "azuki",
     observedAt: "2026-08-07T12:00:00.000Z",
   });
@@ -131,8 +173,9 @@ test("reservoir ingestion resolves identity, persists aliases, and is idempotent
   ]);
   assert.equal(firstRun.traitSnapshot?.traitCategoryCount, 12);
   assert.equal(firstRun.traitSnapshot?.completenessStatus, "complete");
+  assert.equal(fakeReservoir.getOfferPageCallCount(), 1);
 
-  const secondRun = await ingestion.ingestCollectionFacts({
+  const secondRun = await ingestionWithTracker.ingestCollectionFacts({
     collectionRef: "azuki",
     observedAt: "2026-08-07T12:00:00.000Z",
   });
@@ -149,12 +192,100 @@ test("reservoir ingestion resolves identity, persists aliases, and is idempotent
   assert.equal(traitRows.length, 1);
 });
 
-test("reservoir ingestion marks sync failure on endpoint partial failure and preserves persisted partial facts", async () => {
+test("reservoir ingestion paginates >200 qualifying offers and sums full near-floor liquidity", async () => {
+  const repository = createInMemoryCollectionFactsRepository();
+  const qualifyingPageOne = Array.from({ length: 200 }, () => ({
+    priceEth: 1.9,
+    marketplace: "blur",
+  }));
+  const qualifyingPageTwo = Array.from({ length: 105 }, () => ({
+    priceEth: 1.8,
+    marketplace: "blur",
+  }));
+  const fakeReservoir = buildFakeReservoir({
+    offersPages: [qualifyingPageOne, qualifyingPageTwo],
+  });
+  const ingestion = createReservoirCollectionFactsIngestionService({
+    facts: repository,
+    reservoir: fakeReservoir,
+  });
+
+  const run = await ingestion.ingestCollectionFacts({
+    collectionRef: "azuki",
+    observedAt: "2026-08-07T12:03:00.000Z",
+  });
+  assert.equal(run.syncRun.syncStatus, "success");
+  assert.equal(run.componentResults.market.status, "success");
+  assert.ok(run.marketSnapshot?.nearFloorOfferValueNative != null);
+  assert.ok(Math.abs(run.marketSnapshot.nearFloorOfferValueNative - 569) < 1e-9);
+  assert.equal(fakeReservoir.getOfferPageCallCount(), 2);
+});
+
+test("reservoir ingestion stops paginating once offers fall below threshold with stable descending ordering", async () => {
+  const repository = createInMemoryCollectionFactsRepository();
+  const fakeReservoir = buildFakeReservoir({
+    offersPages: [
+      [
+        { priceEth: 1.99, marketplace: "blur" },
+        { priceEth: 1.85, marketplace: "blur" },
+        { priceEth: 1.59, marketplace: "blur" },
+      ],
+      [{ priceEth: 1.58, marketplace: "blur" }],
+    ],
+    offersPagesSortedDesc: [true, true],
+  });
+  const ingestion = createReservoirCollectionFactsIngestionService({
+    facts: repository,
+    reservoir: fakeReservoir,
+  });
+
+  const run = await ingestion.ingestCollectionFacts({
+    collectionRef: "azuki",
+    observedAt: "2026-08-07T12:04:00.000Z",
+  });
+  assert.equal(run.syncRun.syncStatus, "success");
+  assert.equal(run.componentResults.market.status, "success");
+  assert.equal(run.marketSnapshot?.nearFloorOfferValueNative, 3.84);
+  assert.equal(fakeReservoir.getOfferPageCallCount(), 1);
+});
+
+test("reservoir ingestion marks market snapshot partial when offer pagination capability is unavailable", async () => {
+  const repository = createInMemoryCollectionFactsRepository();
+  const fakeReservoir = buildFakeReservoir({
+    disableOffersPagination: true,
+    offersPages: [
+      Array.from({ length: 260 }, () => ({
+        priceEth: 1.9,
+        marketplace: "blur",
+      })),
+    ],
+  });
+  const ingestion = createReservoirCollectionFactsIngestionService({
+    facts: repository,
+    reservoir: fakeReservoir,
+  });
+
+  const run = await ingestion.ingestCollectionFacts({
+    collectionRef: "azuki",
+    observedAt: "2026-08-07T12:04:30.000Z",
+  });
+  assert.equal(run.syncRun.syncStatus, "success");
+  assert.equal(run.componentResults.market.status, "partial");
+  assert.equal(run.marketSnapshot?.completenessStatus, "partial");
+  assert.equal(run.marketSnapshot?.nearFloorOfferValueNative, null);
+});
+
+test("reservoir ingestion marks sync failure on paginated offer-depth provider failure and preserves persisted partial facts", async () => {
   const repository = createInMemoryCollectionFactsRepository();
   const ingestion = createReservoirCollectionFactsIngestionService({
     facts: repository,
     reservoir: buildFakeReservoir({
       offerError: new Error("offer endpoint timeout"),
+      offerErrorPage: 2,
+      offersPages: [
+        Array.from({ length: 200 }, () => ({ priceEth: 1.95, marketplace: "blur" })),
+        Array.from({ length: 50 }, () => ({ priceEth: 1.94, marketplace: "blur" })),
+      ],
     }),
   });
 
@@ -167,8 +298,9 @@ test("reservoir ingestion marks sync failure on endpoint partial failure and pre
   assert.equal(run.componentResults.market.status, "partial");
   assert.equal(run.componentResults.sales.status, "success");
   assert.equal(run.errors.length, 1);
-  assert.match(run.errors[0] ?? "", /Offers endpoint failed/i);
+  assert.match(run.errors[0] ?? "", /Near-floor offer depth failed/i);
   assert.equal(run.marketSnapshot?.completenessStatus, "partial");
+  assert.equal(run.marketSnapshot?.nearFloorOfferValueNative, null);
   assert.equal(run.saleEvents.length, 2);
 });
 
