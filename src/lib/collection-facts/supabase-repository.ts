@@ -63,6 +63,7 @@ interface CollectionMarketSnapshotRow {
   near_floor_offer_value_native: number | null;
   active_offer_count: number | null;
   active_listing_count: number | null;
+  listed_pct: number | null;
   total_supply: number | null;
   holder_count: number | null;
   created_at: string;
@@ -188,6 +189,7 @@ function mapMarketSnapshot(
     nearFloorOfferValueNative: row.near_floor_offer_value_native,
     activeOfferCount: row.active_offer_count,
     activeListingCount: row.active_listing_count,
+    listedPct: row.listed_pct,
     totalSupply: row.total_supply,
     holderCount: row.holder_count,
     createdAt: row.created_at,
@@ -483,6 +485,7 @@ export function createSupabaseCollectionFactsRepository(): CollectionFactsReposi
         near_floor_offer_value_native: snapshot.nearFloorOfferValueNative ?? null,
         active_offer_count: snapshot.activeOfferCount ?? null,
         active_listing_count: snapshot.activeListingCount ?? null,
+        listed_pct: snapshot.listedPct ?? null,
         total_supply: snapshot.totalSupply ?? null,
         holder_count: snapshot.holderCount ?? null,
         updated_at: timestamp,

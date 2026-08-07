@@ -31,6 +31,53 @@ function toEth(value: unknown): number {
   return 0;
 }
 
+function toNumberOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function toNonNegativeNumberOrNull(value: unknown): number | null {
+  const parsed = toNumberOrNull(value);
+  if (parsed == null) return null;
+  return parsed >= 0 ? parsed : null;
+}
+
+function toIntegerOrNull(value: unknown): number | null {
+  const parsed = toNumberOrNull(value);
+  if (parsed == null) return null;
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function asString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function toIsoTimestamp(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Date.parse(trimmed);
+    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : trimmed;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value > 1e12 ? value : value * 1000;
+    return new Date(ms).toISOString();
+  }
+  return null;
+}
+
 /** Normalize a Reservoir timestamp (ISO string or unix seconds) to epoch ms. */
 function toEpochMs(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -59,8 +106,22 @@ function toNormalizedCollection(collection: Record<string, unknown>): Normalized
   const volume =
     toEth((collection.volume as { "7day"?: number; allTime?: number } | undefined)?.["7day"]) ||
     toEth((collection.volume as { allTime?: number } | undefined)?.allTime);
-  const tokenCount = toEth(collection.tokenCount) || 1;
-  const listedCount = toEth(collection.onSaleCount);
+  const supply = toNonNegativeNumberOrNull(collection.tokenCount);
+  const listedCount = toNonNegativeNumberOrNull(collection.onSaleCount);
+  const inferredListedPct =
+    listedCount != null && supply != null && supply > 0
+      ? (listedCount / supply) * 100
+      : null;
+  const listedPercent = Math.max(0, Math.min(100, inferredListedPct ?? 0));
+  const traitCategoryCount = toIntegerOrNull(
+    collection.attributeCount ?? collection.traitsCount
+  );
+  const distinctTraitValueCount = toIntegerOrNull(
+    collection.attributeValueCount ?? collection.attributeValuesCount
+  );
+  const oneOfOneAssetCount = toIntegerOrNull(
+    collection.oneOfOneCount ?? collection.oneOfOnesCount
+  );
 
   const id =
     String(collection.id ?? collection.slug ?? collection.name ?? "unknown-collection");
@@ -74,7 +135,12 @@ function toNormalizedCollection(collection: Record<string, unknown>): Normalized
     holders: toEth(collection.ownerCount),
     sales: toEth(collection.salesCount),
     liquidity: topBid * Math.max(1, toEth(collection.salesCount) * 0.1),
-    listedPercent: Math.max(0, Math.min(100, (listedCount / tokenCount) * 100)),
+    listedPercent,
+    listedCount,
+    supply,
+    traitCategoryCount,
+    distinctTraitValueCount,
+    oneOfOneAssetCount,
     volume,
     metadata: {
       description: String(collection.description ?? ""),
@@ -253,15 +319,51 @@ export class ReservoirProvider implements NftDataProvider {
         `/sales/v6?collection=${encodeURIComponent(collectionId)}&limit=${limit}`
       );
       return (data.sales ?? []).map((sale) => ({
-        tokenId: String(sale.token?.toString() ?? "unknown"),
+        tokenId:
+          asString(asRecord(sale.token)?.tokenId) ??
+          asString(sale.token?.toString()) ??
+          "unknown",
         priceEth: toEth(
           (
             sale.price as { amount?: { native?: number } } | undefined
           )?.amount?.native
         ),
+        chainNamespace: "eip155",
+        contractAddress:
+          asString(asRecord(sale.token)?.contract) ??
+          asString(asRecord(sale.token)?.contractAddress) ??
+          asString(asRecord(sale.contract)?.address) ??
+          null,
+        transactionHash:
+          asString(sale.txHash) ?? asString(sale.transactionHash) ?? null,
+        logIndex:
+          toIntegerOrNull(sale.logIndex) ??
+          toIntegerOrNull(asRecord(sale.event)?.logIndex),
+        eventIndex:
+          toIntegerOrNull(sale.eventIndex) ??
+          toIntegerOrNull(asRecord(sale.event)?.index),
+        buyerAddress:
+          asString(sale.to) ??
+          asString(sale.buyer) ??
+          asString(sale.buyerAddress) ??
+          null,
+        sellerAddress:
+          asString(sale.from) ??
+          asString(sale.seller) ??
+          asString(sale.sellerAddress) ??
+          null,
+        currencySymbol:
+          asString(asRecord(sale.price)?.currency) ??
+          asString(asRecord(asRecord(sale.price)?.currency)?.symbol) ??
+          null,
+        sourceSaleId: asString(sale.id) ?? null,
         marketplace: String(sale.orderSource?.toString() ?? ""),
-        txHash: String(sale.txHash ?? ""),
-        soldAt: String(sale.timestamp ?? ""),
+        txHash: asString(sale.txHash) ?? "",
+        soldAt:
+          toIsoTimestamp(sale.timestamp) ??
+          toIsoTimestamp(sale.createdAt) ??
+          toIsoTimestamp(sale.blockTimestamp) ??
+          "",
       }));
     } catch {
       return [];

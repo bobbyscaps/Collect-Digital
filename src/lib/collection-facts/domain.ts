@@ -61,6 +61,7 @@ export interface CollectionMarketSnapshotFact extends CollectionFactProvenance {
   nearFloorOfferValueNative: number | null;
   activeOfferCount: number | null;
   activeListingCount: number | null;
+  listedPct: number | null;
   totalSupply: number | null;
   holderCount: number | null;
   createdAt: string;

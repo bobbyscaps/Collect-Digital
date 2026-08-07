@@ -186,6 +186,7 @@ for (const target of repositoryTargets) {
           floorPriceNative: 1.5,
           topOfferNative: 1.3,
           activeListingCount: 300,
+          listedPct: 3,
           totalSupply: 10000,
           holderCount: 5300,
           completenessStatus: "complete",
@@ -200,6 +201,7 @@ for (const target of repositoryTargets) {
           floorPriceNative: 1.6,
           topOfferNative: 1.35,
           activeListingCount: 310,
+          listedPct: 3.1,
           totalSupply: 10000,
           holderCount: 5310,
           completenessStatus: "complete",
@@ -214,6 +216,7 @@ for (const target of repositoryTargets) {
           floorPriceNative: 1.8,
           topOfferNative: 1.4,
           activeListingCount: 290,
+          listedPct: 2.9,
           totalSupply: 10000,
           holderCount: 5320,
           completenessStatus: "complete",
@@ -224,6 +227,7 @@ for (const target of repositoryTargets) {
       assert.equal(snapshots.length, 2);
       assert.equal(snapshots[0].observedAt, "2026-08-02T00:00:00.000Z");
       assert.equal(snapshots[1].floorPriceNative, 1.6);
+      assert.equal(snapshots[1].listedPct, 3.1);
     }
   );
 

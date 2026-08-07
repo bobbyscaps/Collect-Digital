@@ -6,9 +6,16 @@ import test from "node:test";
 const migrationPath = path.resolve(
   "supabase/migrations/20260807232500_create_collection_facts_foundation.sql"
 );
+const listedPctMigrationPath = path.resolve(
+  "supabase/migrations/20260807235500_add_listed_pct_to_collection_market_snapshots.sql"
+);
 
 function migrationSql(): string {
   return readFileSync(migrationPath, "utf8");
+}
+
+function listedPctMigrationSql(): string {
+  return readFileSync(listedPctMigrationPath, "utf8");
 }
 
 test("collection facts migration creates required tables", () => {
@@ -86,4 +93,13 @@ test("collection facts migration applies server-only table access model", () => 
   assert.match(sql, /alter table public\.collection_identities enable row level security;/i);
   assert.match(sql, /alter table public\.collection_sales_events enable row level security;/i);
   assert.match(sql, /revoke all on table public\.collection_trait_snapshots from anon, authenticated;/i);
+});
+
+test("listed pct additive migration adds bounded listed_pct column", () => {
+  const sql = listedPctMigrationSql();
+  assert.match(
+    sql,
+    /alter table public\.collection_market_snapshots\s+add column if not exists listed_pct numeric null/i
+  );
+  assert.match(sql, /check \(listed_pct is null or \(listed_pct >= 0 and listed_pct <= 100\)\)/i);
 });
