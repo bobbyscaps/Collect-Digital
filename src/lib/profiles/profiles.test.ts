@@ -267,14 +267,16 @@ test("wallet registration, challenge, verify, and sync use internal UUID", async
 
 test("migration order is chronological and starts with profiles", () => {
   const files = listMigrationFiles();
-  assert.deepEqual(files, [
+  const requiredPrefix = [
     "20260725210000_create_profiles.sql",
     "20260725214500_create_profile_wallets.sql",
     "20260725220000_create_wallet_verification_challenges.sql",
     "20260725223000_atomic_wallet_verification.sql",
     "20260725230000_create_wallet_inventory.sql",
     "20260725231000_create_provider_cache_entries.sql",
-  ]);
+  ];
+  assert.deepEqual(files.slice(0, requiredPrefix.length), requiredPrefix);
+  assert.deepEqual(files, [...files].sort());
 });
 
 test("no migration depends on auth.users", () => {
