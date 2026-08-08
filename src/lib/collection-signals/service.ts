@@ -19,6 +19,11 @@ import type {
 } from "@/lib/collection-signals/repository";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+const HOLDER_GROWTH_SNAPSHOT_TOLERANCE_MS = 72 * 60 * 60 * 1000;
+const FLOOR_AT_SALE_TOLERANCE_MS = 48 * 60 * 60 * 1000;
+const SALES_ABOVE_FLOOR_MIN_COVERAGE_COMPLETE_PCT = 90;
 const LISTING_PRESSURE_DISCREPANCY_PCT = 0.5;
 
 export interface ComputeCollectionSignalInput {
@@ -99,6 +104,59 @@ function pickLatestObservedFact<T extends { observedAt: string }>(
   return latest;
 }
 
+function pickSnapshotAtOrBeforeWithinTolerance<T extends { observedAt: string }>(
+  values: readonly T[],
+  targetMs: number,
+  toleranceMs: number
+): { snapshot: T; ageMs: number } | null {
+  let selected: T | null = null;
+  let selectedMs = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    const observedAtMs = Date.parse(value.observedAt);
+    if (!Number.isFinite(observedAtMs)) continue;
+    if (observedAtMs > targetMs) continue;
+    if (observedAtMs > selectedMs) {
+      selected = value;
+      selectedMs = observedAtMs;
+    }
+  }
+  if (!selected) return null;
+  const ageMs = targetMs - selectedMs;
+  if (ageMs > toleranceMs) {
+    return null;
+  }
+  return {
+    snapshot: selected,
+    ageMs,
+  };
+}
+
+function monthKeyFromIso(isoTimestamp: string): string | null {
+  const ms = Date.parse(isoTimestamp);
+  if (!Number.isFinite(ms)) return null;
+  const date = new Date(ms);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function monthDistanceInclusive(startMonth: string, endMonth: string): number {
+  const [startYear, startMonthNumber] = startMonth.split("-").map(Number);
+  const [endYear, endMonthNumber] = endMonth.split("-").map(Number);
+  if (
+    !Number.isFinite(startYear) ||
+    !Number.isFinite(startMonthNumber) ||
+    !Number.isFinite(endYear) ||
+    !Number.isFinite(endMonthNumber)
+  ) {
+    return 0;
+  }
+  const startIndex = startYear * 12 + (startMonthNumber - 1);
+  const endIndex = endYear * 12 + (endMonthNumber - 1);
+  if (endIndex < startIndex) return 0;
+  return endIndex - startIndex + 1;
+}
+
 function toThirtyDayWindow(evaluatedAtMs: number): CollectionSignalSourceWindow {
   return {
     windowStart: toIsoDateFromMs(evaluatedAtMs - THIRTY_DAYS_MS),
@@ -128,6 +186,100 @@ function filterSalesInWindow(input: {
     inWindow,
     qualifying,
     droppedMissingPriceCount: inWindow.length - qualifying.length,
+  };
+}
+
+interface SalesAboveFloorComputation {
+  value: number | null;
+  completenessStatus: CollectionFactCompletenessStatus;
+  sourceWindow: CollectionSignalSourceWindow;
+  metadata: Record<string, unknown>;
+}
+
+function computeSalesAboveFloorPct(context: LoadedFactContext): SalesAboveFloorComputation {
+  const sourceWindow = toThirtyDayWindow(context.evaluatedAtMs);
+  const windowStartMs = Date.parse(sourceWindow.windowStart ?? "");
+  const windowEndMs = Date.parse(sourceWindow.windowEnd ?? "");
+  const sales = filterSalesInWindow({
+    salesEvents: context.salesEvents,
+    windowStartMs,
+    windowEndMs,
+  });
+
+  let measurableSalesCount = 0;
+  let aboveFloorSalesCount = 0;
+  let atOrBelowFloorSalesCount = 0;
+  let missingFloorSalesCount = 0;
+  const floorSnapshotAgeHoursSamples: number[] = [];
+
+  for (const sale of sales.qualifying) {
+    const soldAtMs = Date.parse(sale.soldAt);
+    if (!Number.isFinite(soldAtMs)) continue;
+    const floorSnapshotMatch = pickSnapshotAtOrBeforeWithinTolerance(
+      context.marketSnapshots,
+      soldAtMs,
+      FLOOR_AT_SALE_TOLERANCE_MS
+    );
+    if (!floorSnapshotMatch) {
+      missingFloorSalesCount += 1;
+      continue;
+    }
+    const floor = floorSnapshotMatch.snapshot.floorPriceNative;
+    if (typeof floor !== "number" || !Number.isFinite(floor) || floor <= 0) {
+      missingFloorSalesCount += 1;
+      continue;
+    }
+    measurableSalesCount += 1;
+    floorSnapshotAgeHoursSamples.push(floorSnapshotMatch.ageMs / (60 * 60 * 1000));
+    const price = sale.priceAmountNative ?? 0;
+    if (price > floor) {
+      aboveFloorSalesCount += 1;
+    } else {
+      atOrBelowFloorSalesCount += 1;
+    }
+  }
+
+  const totalQualifyingSalesCount = sales.qualifying.length;
+  const coveragePct =
+    totalQualifyingSalesCount > 0
+      ? (measurableSalesCount / totalQualifyingSalesCount) * 100
+      : 0;
+  const value =
+    measurableSalesCount > 0
+      ? toBoundedPercent((aboveFloorSalesCount / measurableSalesCount) * 100)
+      : null;
+
+  const completenessStatus: CollectionFactCompletenessStatus =
+    measurableSalesCount === 0
+      ? totalQualifyingSalesCount > 0
+        ? "partial"
+        : "unknown"
+      : coveragePct >= SALES_ABOVE_FLOOR_MIN_COVERAGE_COMPLETE_PCT &&
+          missingFloorSalesCount === 0
+        ? "complete"
+        : "partial";
+
+  const averageFloorSnapshotAgeHours =
+    floorSnapshotAgeHoursSamples.length > 0
+      ? floorSnapshotAgeHoursSamples.reduce((sum, age) => sum + age, 0) /
+        floorSnapshotAgeHoursSamples.length
+      : null;
+
+  return {
+    value,
+    completenessStatus,
+    sourceWindow,
+    metadata: {
+      totalQualifyingSalesCount,
+      measurableSalesCount,
+      missingFloorSalesCount,
+      aboveFloorSalesCount,
+      atOrBelowFloorSalesCount,
+      coveragePct,
+      floorSnapshotToleranceHours: FLOOR_AT_SALE_TOLERANCE_MS / (60 * 60 * 1000),
+      averageFloorSnapshotAgeHours,
+      droppedMissingPriceCount: sales.droppedMissingPriceCount,
+    },
   };
 }
 
@@ -331,10 +483,350 @@ function buildListingPressureSignal(context: LoadedFactContext): SignalComputati
   };
 }
 
+function buildHolderDistributionSignal(
+  context: LoadedFactContext
+): SignalComputationResult {
+  const snapshot = pickLatestObservedFact(
+    context.marketSnapshots,
+    context.evaluatedAtMs
+  );
+  if (!snapshot) {
+    return {
+      signalKey: "holder_distribution",
+      calculationVersion:
+        COLLECTION_DERIVED_SIGNAL_CALCULATION_VERSIONS.holder_distribution,
+      numericValue: null,
+      structuredValue: null,
+      sourceWindow: {
+        windowStart: null,
+        windowEnd: null,
+      },
+      completenessStatus: "unknown",
+      metadata: {
+        reason: "no_market_snapshot",
+      },
+    };
+  }
+
+  const holders = snapshot.holderCount;
+  const supply = snapshot.totalSupply;
+  const sourceWindow = {
+    windowStart: snapshot.observedAt,
+    windowEnd: snapshot.observedAt,
+  };
+
+  if (
+    typeof holders === "number" &&
+    Number.isFinite(holders) &&
+    holders >= 0 &&
+    typeof supply === "number" &&
+    Number.isFinite(supply) &&
+    supply > 0
+  ) {
+    const holderRatio = toBoundedDensity(holders / supply);
+    const structuredValue: Record<string, unknown> = {
+      holderRatio,
+      holderRatioPct: holderRatio * 100,
+      topHolderConcentrationPct: {
+        value: null,
+        status: "unknown",
+        reason: "holder_distribution_per_wallet_facts_not_yet_ingested",
+      },
+    };
+    return {
+      signalKey: "holder_distribution",
+      calculationVersion:
+        COLLECTION_DERIVED_SIGNAL_CALCULATION_VERSIONS.holder_distribution,
+      numericValue: null,
+      structuredValue,
+      sourceWindow,
+      completenessStatus: "partial",
+      metadata: {
+        marketSnapshotCompletenessStatus: snapshot.completenessStatus,
+        holderCount: holders,
+        totalSupply: supply,
+      },
+    };
+  }
+
+  return {
+    signalKey: "holder_distribution",
+    calculationVersion:
+      COLLECTION_DERIVED_SIGNAL_CALCULATION_VERSIONS.holder_distribution,
+    numericValue: null,
+    structuredValue: null,
+    sourceWindow,
+    completenessStatus:
+      snapshot.completenessStatus === "unknown" ? "unknown" : "partial",
+    metadata: {
+      reason: "missing_holder_or_supply_inputs",
+      holderCount: holders,
+      totalSupply: supply,
+    },
+  };
+}
+
+function buildHolderGrowthSignal(context: LoadedFactContext): SignalComputationResult {
+  const currentMatch = pickSnapshotAtOrBeforeWithinTolerance(
+    context.marketSnapshots,
+    context.evaluatedAtMs,
+    HOLDER_GROWTH_SNAPSHOT_TOLERANCE_MS
+  );
+  if (!currentMatch) {
+    return {
+      signalKey: "holder_growth",
+      calculationVersion: COLLECTION_DERIVED_SIGNAL_CALCULATION_VERSIONS.holder_growth,
+      numericValue: null,
+      structuredValue: null,
+      sourceWindow: {
+        windowStart: null,
+        windowEnd: null,
+      },
+      completenessStatus: "unknown",
+      metadata: {
+        reason: "missing_current_holder_snapshot_within_tolerance",
+        snapshotToleranceHours:
+          HOLDER_GROWTH_SNAPSHOT_TOLERANCE_MS / (60 * 60 * 1000),
+      },
+    };
+  }
+
+  const currentHolders = currentMatch.snapshot.holderCount;
+  if (
+    typeof currentHolders !== "number" ||
+    !Number.isFinite(currentHolders) ||
+    currentHolders < 0
+  ) {
+    return {
+      signalKey: "holder_growth",
+      calculationVersion: COLLECTION_DERIVED_SIGNAL_CALCULATION_VERSIONS.holder_growth,
+      numericValue: null,
+      structuredValue: null,
+      sourceWindow: {
+        windowStart: currentMatch.snapshot.observedAt,
+        windowEnd: currentMatch.snapshot.observedAt,
+      },
+      completenessStatus: "partial",
+      metadata: {
+        reason: "current_holder_count_unavailable",
+      },
+    };
+  }
+
+  const windows = [
+    { key: "growth7d", durationMs: SEVEN_DAYS_MS, label: "7d" },
+    { key: "growth30d", durationMs: THIRTY_DAYS_MS, label: "30d" },
+    { key: "growth90d", durationMs: NINETY_DAYS_MS, label: "90d" },
+  ] as const;
+
+  const structured: Record<string, unknown> = {};
+  let hasAnyMeasured = false;
+  let allComplete = true;
+  let sourceWindowStartMs = context.evaluatedAtMs;
+
+  for (const window of windows) {
+    const targetMs = context.evaluatedAtMs - window.durationMs;
+    sourceWindowStartMs = Math.min(sourceWindowStartMs, targetMs);
+    const previousMatch = pickSnapshotAtOrBeforeWithinTolerance(
+      context.marketSnapshots,
+      targetMs,
+      HOLDER_GROWTH_SNAPSHOT_TOLERANCE_MS
+    );
+
+    if (!previousMatch) {
+      allComplete = false;
+      structured[window.key] = {
+        value: null,
+        status: "unknown",
+        reason: "missing_historical_snapshot_within_tolerance",
+        targetAt: toIsoDateFromMs(targetMs),
+      };
+      continue;
+    }
+
+    const previousHolders = previousMatch.snapshot.holderCount;
+    if (
+      typeof previousHolders !== "number" ||
+      !Number.isFinite(previousHolders) ||
+      previousHolders <= 0
+    ) {
+      allComplete = false;
+      structured[window.key] = {
+        value: null,
+        status: "unknown",
+        reason: "invalid_previous_holder_count",
+        previousHolderCount: previousHolders,
+        previousObservedAt: previousMatch.snapshot.observedAt,
+      };
+      continue;
+    }
+
+    const growthPct = ((currentHolders - previousHolders) / previousHolders) * 100;
+    const status =
+      currentMatch.snapshot.completenessStatus === "complete" &&
+      previousMatch.snapshot.completenessStatus === "complete"
+        ? "complete"
+        : "partial";
+    if (status !== "complete") {
+      allComplete = false;
+    }
+    hasAnyMeasured = true;
+    structured[window.key] = {
+      value: growthPct,
+      status,
+      currentHolderCount: currentHolders,
+      previousHolderCount: previousHolders,
+      currentObservedAt: currentMatch.snapshot.observedAt,
+      previousObservedAt: previousMatch.snapshot.observedAt,
+      snapshotAgeHours: previousMatch.ageMs / (60 * 60 * 1000),
+    };
+  }
+
+  const completenessStatus: CollectionFactCompletenessStatus = hasAnyMeasured
+    ? allComplete
+      ? "complete"
+      : "partial"
+    : "unknown";
+
+  return {
+    signalKey: "holder_growth",
+    calculationVersion: COLLECTION_DERIVED_SIGNAL_CALCULATION_VERSIONS.holder_growth,
+    numericValue: null,
+    structuredValue: structured,
+    sourceWindow: {
+      windowStart: toIsoDateFromMs(sourceWindowStartMs),
+      windowEnd: context.evaluatedAt,
+    },
+    completenessStatus,
+    metadata: {
+      snapshotToleranceHours:
+        HOLDER_GROWTH_SNAPSHOT_TOLERANCE_MS / (60 * 60 * 1000),
+    },
+  };
+}
+
+function buildSalesAboveFloorPctSignal(
+  context: LoadedFactContext
+): SignalComputationResult {
+  const component = computeSalesAboveFloorPct(context);
+  return {
+    signalKey: "sales_above_floor_pct",
+    calculationVersion:
+      COLLECTION_DERIVED_SIGNAL_CALCULATION_VERSIONS.sales_above_floor_pct,
+    numericValue: component.value,
+    structuredValue: null,
+    sourceWindow: component.sourceWindow,
+    completenessStatus: component.completenessStatus,
+    metadata: component.metadata,
+  };
+}
+
+function buildProjectMaturitySignal(context: LoadedFactContext): SignalComputationResult {
+  const qualifyingSales = context.salesEvents.filter((sale) => {
+    const soldAtMs = Date.parse(sale.soldAt);
+    return (
+      Number.isFinite(soldAtMs) &&
+      soldAtMs <= context.evaluatedAtMs &&
+      typeof sale.priceAmountNative === "number" &&
+      Number.isFinite(sale.priceAmountNative) &&
+      sale.priceAmountNative > 0
+    );
+  });
+
+  if (qualifyingSales.length === 0) {
+    return {
+      signalKey: "project_maturity",
+      calculationVersion:
+        COLLECTION_DERIVED_SIGNAL_CALCULATION_VERSIONS.project_maturity,
+      numericValue: null,
+      structuredValue: null,
+      sourceWindow: {
+        windowStart: null,
+        windowEnd: context.evaluatedAt,
+      },
+      completenessStatus: "unknown",
+      metadata: {
+        reason: "no_verified_sales_in_persisted_facts",
+        historicalCoverage: "unknown",
+      },
+    };
+  }
+
+  const salesMonthKeys = qualifyingSales
+    .map((sale) => monthKeyFromIso(sale.soldAt))
+    .filter((key): key is string => key != null);
+  const uniqueActiveMonths = new Set(salesMonthKeys);
+  const firstSale = qualifyingSales.reduce((earliest, sale) =>
+    Date.parse(sale.soldAt) < Date.parse(earliest.soldAt) ? sale : earliest
+  );
+  const latestSale = qualifyingSales.reduce((latest, sale) =>
+    Date.parse(sale.soldAt) > Date.parse(latest.soldAt) ? sale : latest
+  );
+
+  const firstSaleMonth = monthKeyFromIso(firstSale.soldAt);
+  const latestSaleMonth = monthKeyFromIso(latestSale.soldAt);
+  const evaluatedMonth = monthKeyFromIso(context.evaluatedAt);
+
+  if (!firstSaleMonth || !latestSaleMonth || !evaluatedMonth) {
+    return {
+      signalKey: "project_maturity",
+      calculationVersion:
+        COLLECTION_DERIVED_SIGNAL_CALCULATION_VERSIONS.project_maturity,
+      numericValue: null,
+      structuredValue: null,
+      sourceWindow: {
+        windowStart: null,
+        windowEnd: context.evaluatedAt,
+      },
+      completenessStatus: "partial",
+      metadata: {
+        reason: "unable_to_align_sales_months",
+        historicalCoverage: "unknown",
+      },
+    };
+  }
+
+  const monthsSinceFirstSale = monthDistanceInclusive(firstSaleMonth, evaluatedMonth);
+  const activeMonthsCount = uniqueActiveMonths.size;
+  const activeMonthRatio =
+    monthsSinceFirstSale > 0 ? activeMonthsCount / monthsSinceFirstSale : 0;
+  const monthsSinceLatestSale = Math.max(
+    0,
+    monthDistanceInclusive(latestSaleMonth, evaluatedMonth) - 1
+  );
+  const historicalCoverageStatus =
+    monthsSinceFirstSale >= 12 ? "moderate" : "limited";
+
+  return {
+    signalKey: "project_maturity",
+    calculationVersion: COLLECTION_DERIVED_SIGNAL_CALCULATION_VERSIONS.project_maturity,
+    numericValue: null,
+    structuredValue: {
+      monthsSinceFirstVerifiedSale: monthsSinceFirstSale,
+      activeMonthsCount,
+      activeMonthRatio,
+      consecutiveInactiveMonths: monthsSinceLatestSale,
+    },
+    sourceWindow: {
+      windowStart: firstSale.soldAt,
+      windowEnd: context.evaluatedAt,
+    },
+    completenessStatus: "partial",
+    metadata: {
+      note: "Historical sales coverage completeness is unknown without explicit backfill coverage facts.",
+      historicalCoverage: historicalCoverageStatus,
+      salesCountInPersistedHistory: qualifyingSales.length,
+      firstSaleAt: firstSale.soldAt,
+      latestSaleAt: latestSale.soldAt,
+    },
+  };
+}
+
 function buildCollectorDemandQualitySignal(
   context: LoadedFactContext
 ): SignalComputationResult {
-  const window = toThirtyDayWindow(context.evaluatedAtMs);
+  const salesAboveFloor = computeSalesAboveFloorPct(context);
+  const window = salesAboveFloor.sourceWindow;
   const windowStartMs = Date.parse(window.windowStart ?? "");
   const windowEndMs = Date.parse(window.windowEnd ?? "");
   const sales = filterSalesInWindow({
@@ -357,25 +849,34 @@ function buildCollectorDemandQualitySignal(
     identifiableBuyers.length > 0
       ? 1 - uniqueBuyerCount / identifiableBuyers.length
       : null;
+  const repeatBuyerStatus: "complete" | "partial" | "unknown" =
+    repeatBuyerConcentration == null
+      ? "unknown"
+      : unknownBuyerSalesCount > 0
+        ? "partial"
+        : "complete";
+  const uniqueBuyerStatus: "complete" | "partial" =
+    unknownBuyerSalesCount > 0 ? "partial" : "complete";
 
   const structuredValue: Record<string, unknown> = {
     salesAboveFloorPct: {
-      value: null,
-      status: "unknown",
-      reason: "floor_at_sale_matching_unavailable_in_pr3a",
+      value: salesAboveFloor.value,
+      status: salesAboveFloor.completenessStatus,
+      coveragePct: salesAboveFloor.metadata.coveragePct,
+      measurableSalesCount: salesAboveFloor.metadata.measurableSalesCount,
+      totalQualifyingSalesCount:
+        salesAboveFloor.metadata.totalQualifyingSalesCount,
+      missingFloorSalesCount: salesAboveFloor.metadata.missingFloorSalesCount,
+      floorSnapshotToleranceHours:
+        salesAboveFloor.metadata.floorSnapshotToleranceHours,
     },
     uniqueBuyerCount: {
       value: uniqueBuyerCount,
-      status: unknownBuyerSalesCount > 0 ? "partial" : "complete",
+      status: uniqueBuyerStatus,
     },
     repeatBuyerConcentration: {
       value: repeatBuyerConcentration,
-      status:
-        repeatBuyerConcentration == null
-          ? "unknown"
-          : unknownBuyerSalesCount > 0
-            ? "partial"
-            : "complete",
+      status: repeatBuyerStatus,
       formula: "1 - (unique_buyers / identifiable_buyer_sales)",
     },
     qualifyingSalesCount: sales.qualifying.length,
@@ -384,6 +885,16 @@ function buildCollectorDemandQualitySignal(
     droppedMissingPriceCount: sales.droppedMissingPriceCount,
   };
 
+  const completenessStatus: CollectionFactCompletenessStatus =
+    salesAboveFloor.completenessStatus === "complete" &&
+    uniqueBuyerStatus === "complete" &&
+    repeatBuyerStatus === "complete" &&
+    sales.droppedMissingPriceCount === 0
+      ? "complete"
+      : sales.qualifying.length > 0
+        ? "partial"
+        : "unknown";
+
   return {
     signalKey: "collector_demand_quality",
     calculationVersion:
@@ -391,9 +902,9 @@ function buildCollectorDemandQualitySignal(
     numericValue: null,
     structuredValue,
     sourceWindow: window,
-    completenessStatus: "partial",
+    completenessStatus,
     metadata: {
-      note: "Collector Demand Quality v1 stores deterministic component signals only.",
+      note: "Collector Demand Quality v2 stores deterministic component signals only.",
     },
   };
 }
@@ -585,6 +1096,14 @@ function computeSignal(
       return buildThirtyDayTradingVolumeSignal(context);
     case "listing_pressure":
       return buildListingPressureSignal(context);
+    case "holder_distribution":
+      return buildHolderDistributionSignal(context);
+    case "holder_growth":
+      return buildHolderGrowthSignal(context);
+    case "project_maturity":
+      return buildProjectMaturitySignal(context);
+    case "sales_above_floor_pct":
+      return buildSalesAboveFloorPctSignal(context);
     case "collector_demand_quality":
       return buildCollectorDemandQualitySignal(context);
     case "trait_diversity_index":

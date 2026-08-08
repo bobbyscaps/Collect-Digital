@@ -307,6 +307,190 @@ test("service computes listing pressure ratio and provider fallback safely", asy
   assert.equal(fallbackSignal.metadata?.method, "provider_listed_pct_fallback");
 });
 
+test("service computes holder distribution with explicit concentration gap", async () => {
+  const facts = createInMemoryCollectionFactsRepository();
+  const signals = createInMemoryCollectionSignalRepository();
+  const service = createCollectionSignalService({
+    factsRepository: facts,
+    signalRepository: signals,
+  });
+  const identity = await createCollectionIdentity(
+    facts,
+    "0x0000000000000000000000000000000000000d22"
+  );
+
+  await facts.upsertCollectionMarketSnapshots([
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-09-02T00:00:00.000Z",
+      completenessStatus: "complete",
+      holderCount: 1200,
+      totalSupply: 10000,
+    },
+  ]);
+
+  const signal = await service.computeCollectionSignal({
+    collectionIdentityId: identity.id,
+    signalKey: "holder_distribution",
+    evaluatedAt: "2026-09-02T01:00:00.000Z",
+  });
+  assert.equal(signal.completenessStatus, "partial");
+  const structured = signal.structuredValue;
+  assert.ok(structured);
+  assert.equal(structured.holderRatio, 0.12);
+  const concentration = structured.topHolderConcentrationPct as {
+    value: null;
+    status: string;
+  };
+  assert.equal(concentration.value, null);
+  assert.equal(concentration.status, "unknown");
+});
+
+test("service computes holder growth windows with deterministic snapshot alignment", async () => {
+  const facts = createInMemoryCollectionFactsRepository();
+  const signals = createInMemoryCollectionSignalRepository();
+  const service = createCollectionSignalService({
+    factsRepository: facts,
+    signalRepository: signals,
+  });
+  const identity = await createCollectionIdentity(
+    facts,
+    "0x0000000000000000000000000000000000000d33"
+  );
+  const evaluatedAt = "2026-10-01T00:00:00.000Z";
+
+  await facts.upsertCollectionMarketSnapshots([
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-10-01T00:00:00.000Z",
+      completenessStatus: "complete",
+      holderCount: 1000,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-09-24T00:00:00.000Z",
+      completenessStatus: "complete",
+      holderCount: 900,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-09-01T00:00:00.000Z",
+      completenessStatus: "partial",
+      holderCount: 950,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-07-03T00:00:00.000Z",
+      completenessStatus: "complete",
+      holderCount: 800,
+    },
+  ]);
+
+  const growth = await service.computeCollectionSignal({
+    collectionIdentityId: identity.id,
+    signalKey: "holder_growth",
+    evaluatedAt,
+  });
+  assert.equal(growth.completenessStatus, "partial");
+  const structured = growth.structuredValue;
+  assert.ok(structured);
+  const growth7d = structured.growth7d as { value: number; status: string };
+  assert.ok(Math.abs(growth7d.value - ((1000 - 900) / 900) * 100) < 1e-9);
+  assert.equal(growth7d.status, "complete");
+  const growth30d = structured.growth30d as { value: number; status: string };
+  assert.ok(Math.abs(growth30d.value - ((1000 - 950) / 950) * 100) < 1e-9);
+  assert.equal(growth30d.status, "partial");
+  const growth90d = structured.growth90d as { value: number; status: string };
+  assert.ok(Math.abs(growth90d.value - ((1000 - 800) / 800) * 100) < 1e-9);
+  assert.equal(growth90d.status, "complete");
+});
+
+test("service computes sales above floor with floor-at-sale alignment tolerance", async () => {
+  const facts = createInMemoryCollectionFactsRepository();
+  const signals = createInMemoryCollectionSignalRepository();
+  const service = createCollectionSignalService({
+    factsRepository: facts,
+    signalRepository: signals,
+  });
+  const identity = await createCollectionIdentity(
+    facts,
+    "0x0000000000000000000000000000000000000e22"
+  );
+  const evaluatedAt = "2026-09-01T00:00:00.000Z";
+
+  await facts.upsertCollectionMarketSnapshots([
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-08-20T00:00:00.000Z",
+      completenessStatus: "complete",
+      floorPriceNative: 1.5,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-08-21T00:00:00.000Z",
+      completenessStatus: "complete",
+      floorPriceNative: 2,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-08-22T00:00:00.000Z",
+      completenessStatus: "complete",
+      floorPriceNative: 2.1,
+    },
+  ]);
+  await facts.upsertCollectionSaleEvents([
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: evaluatedAt,
+      chainNamespace: "eip155",
+      contractAddress: identity.contractAddress,
+      tokenId: "1",
+      soldAt: "2026-08-20T12:00:00.000Z",
+      priceAmountNative: 1.8,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: evaluatedAt,
+      chainNamespace: "eip155",
+      contractAddress: identity.contractAddress,
+      tokenId: "2",
+      soldAt: "2026-08-21T12:00:00.000Z",
+      priceAmountNative: 2,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: evaluatedAt,
+      chainNamespace: "eip155",
+      contractAddress: identity.contractAddress,
+      tokenId: "3",
+      soldAt: "2026-08-24T01:00:00.000Z",
+      priceAmountNative: 2.3,
+    },
+  ]);
+
+  const signal = await service.computeCollectionSignal({
+    collectionIdentityId: identity.id,
+    signalKey: "sales_above_floor_pct",
+    evaluatedAt,
+  });
+  assert.equal(signal.completenessStatus, "partial");
+  assert.ok(signal.numericValue != null);
+  assert.equal(signal.numericValue, 50);
+  assert.equal(signal.metadata?.measurableSalesCount, 2);
+  assert.equal(signal.metadata?.missingFloorSalesCount, 1);
+});
+
 test("service computes collector demand quality components deterministically", async () => {
   const facts = createInMemoryCollectionFactsRepository();
   const signals = createInMemoryCollectionSignalRepository();
@@ -365,6 +549,36 @@ test("service computes collector demand quality components deterministically", a
       buyerAddress: null,
     },
   ]);
+  await facts.upsertCollectionMarketSnapshots([
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-08-20T00:00:00.000Z",
+      completenessStatus: "complete",
+      floorPriceNative: 1.8,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-08-21T00:00:00.000Z",
+      completenessStatus: "complete",
+      floorPriceNative: 1.4,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-08-22T00:00:00.000Z",
+      completenessStatus: "complete",
+      floorPriceNative: 1.1,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-08-23T00:00:00.000Z",
+      completenessStatus: "complete",
+      floorPriceNative: 2.2,
+    },
+  ]);
 
   const demandSignal = await service.computeCollectionSignal({
     collectionIdentityId: identity.id,
@@ -372,15 +586,16 @@ test("service computes collector demand quality components deterministically", a
     evaluatedAt: "2026-09-01T00:00:00.000Z",
   });
   assert.equal(demandSignal.completenessStatus, "partial");
+  assert.equal(demandSignal.calculationVersion, "collector_demand_quality:v2");
   const structured = demandSignal.structuredValue;
   assert.ok(structured);
   const uniqueBuyer = structured.uniqueBuyerCount as { value: number };
   assert.equal(uniqueBuyer.value, 2);
   const repeat = structured.repeatBuyerConcentration as { value: number };
   assert.ok(Math.abs(repeat.value - (1 - 2 / 3)) < 1e-9);
-  const aboveFloor = structured.salesAboveFloorPct as { value: null; status: string };
-  assert.equal(aboveFloor.value, null);
-  assert.equal(aboveFloor.status, "unknown");
+  const aboveFloor = structured.salesAboveFloorPct as { value: number; status: string };
+  assert.equal(aboveFloor.value, 75);
+  assert.equal(aboveFloor.status, "complete");
 });
 
 test("service computes trait diversity index and layer complexity with partial handling", async () => {
@@ -454,6 +669,65 @@ test("service computes trait diversity index and layer complexity with partial h
   assert.equal(partialComplexity.completenessStatus, "partial");
 });
 
+test("service computes project maturity components from verified sales history", async () => {
+  const facts = createInMemoryCollectionFactsRepository();
+  const signals = createInMemoryCollectionSignalRepository();
+  const service = createCollectionSignalService({
+    factsRepository: facts,
+    signalRepository: signals,
+  });
+  const identity = await createCollectionIdentity(
+    facts,
+    "0x0000000000000000000000000000000000000f22"
+  );
+
+  await facts.upsertCollectionSaleEvents([
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-10-01T00:00:00.000Z",
+      chainNamespace: "eip155",
+      contractAddress: identity.contractAddress,
+      tokenId: "1",
+      soldAt: "2025-10-15T00:00:00.000Z",
+      priceAmountNative: 2,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-10-01T00:00:00.000Z",
+      chainNamespace: "eip155",
+      contractAddress: identity.contractAddress,
+      tokenId: "2",
+      soldAt: "2026-01-20T00:00:00.000Z",
+      priceAmountNative: 1.5,
+    },
+    {
+      collectionIdentityId: identity.id,
+      sourceProvider: "reservoir",
+      observedAt: "2026-10-01T00:00:00.000Z",
+      chainNamespace: "eip155",
+      contractAddress: identity.contractAddress,
+      tokenId: "3",
+      soldAt: "2026-08-10T00:00:00.000Z",
+      priceAmountNative: 1.8,
+    },
+  ]);
+
+  const maturity = await service.computeCollectionSignal({
+    collectionIdentityId: identity.id,
+    signalKey: "project_maturity",
+    evaluatedAt: "2026-10-01T00:00:00.000Z",
+  });
+  assert.equal(maturity.completenessStatus, "partial");
+  const structured = maturity.structuredValue;
+  assert.ok(structured);
+  assert.equal(structured.activeMonthsCount, 3);
+  assert.equal(structured.monthsSinceFirstVerifiedSale, 13);
+  assert.ok(Math.abs((structured.activeMonthRatio as number) - 3 / 13) < 1e-12);
+  assert.equal(structured.consecutiveInactiveMonths, 2);
+});
+
 test("service computes and persists full MVP signal batch deterministically", async () => {
   const facts = createInMemoryCollectionFactsRepository();
   const signals = createInMemoryCollectionSignalRepository();
@@ -507,16 +781,16 @@ test("service computes and persists full MVP signal batch deterministically", as
     collectionIdentityId: identity.id,
     evaluatedAt: "2026-09-01T00:00:00.000Z",
   });
-  assert.equal(first.length, 6);
+  assert.equal(first.length, 10);
 
   const second = await service.computeMvpCollectionSignalBatch({
     collectionIdentityId: identity.id,
     evaluatedAt: "2026-09-01T00:00:00.000Z",
   });
-  assert.equal(second.length, 6);
+  assert.equal(second.length, 10);
 
   const allRows = await signals.listCollectionSignalValues(identity.id);
-  assert.equal(allRows.length, 6);
+  assert.equal(allRows.length, 10);
   const latestRows = await service.listLatestCollectionSignals(identity.id);
-  assert.equal(latestRows.length, 6);
+  assert.equal(latestRows.length, 10);
 });
