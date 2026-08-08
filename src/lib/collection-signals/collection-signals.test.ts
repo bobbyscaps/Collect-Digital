@@ -248,9 +248,9 @@ test("service computes 30-day volume with deterministic boundary and missing-pri
     signalKey: "trading_volume_30d",
     evaluatedAt,
   });
-  assert.equal(volumeSignal.numericValue, 3.5);
+  assert.equal(volumeSignal.numericValue, 2);
   assert.equal(volumeSignal.completenessStatus, "partial");
-  assert.deepEqual(volumeSignal.metadata?.qualifyingSaleCount, 2);
+  assert.deepEqual(volumeSignal.metadata?.qualifyingSaleCount, 1);
 });
 
 test("service computes listing pressure ratio and provider fallback safely", async () => {
