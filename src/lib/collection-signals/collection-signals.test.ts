@@ -591,7 +591,7 @@ test("service computes collector demand quality components deterministically", a
   assert.ok(structured);
   const uniqueBuyer = structured.uniqueBuyerCount as { value: number };
   assert.equal(uniqueBuyer.value, 2);
-  const repeat = structured.repeatBuyerConcentration as { value: number };
+  const repeat = structured.repeatBuyerRate as { value: number };
   assert.ok(Math.abs(repeat.value - (1 - 2 / 3)) < 1e-9);
   const aboveFloor = structured.salesAboveFloorPct as { value: number; status: string };
   assert.equal(aboveFloor.value, 75);

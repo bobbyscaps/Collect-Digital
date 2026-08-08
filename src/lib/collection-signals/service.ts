@@ -845,12 +845,12 @@ function buildCollectorDemandQualitySignal(
   const uniqueBuyerCount = new Set(identifiableBuyers).size;
   const unknownBuyerSalesCount = normalizedBuyers.length - identifiableBuyers.length;
 
-  const repeatBuyerConcentration =
+  const repeatBuyerRate =
     identifiableBuyers.length > 0
       ? 1 - uniqueBuyerCount / identifiableBuyers.length
       : null;
   const repeatBuyerStatus: "complete" | "partial" | "unknown" =
-    repeatBuyerConcentration == null
+    repeatBuyerRate == null
       ? "unknown"
       : unknownBuyerSalesCount > 0
         ? "partial"
@@ -874,8 +874,8 @@ function buildCollectorDemandQualitySignal(
       value: uniqueBuyerCount,
       status: uniqueBuyerStatus,
     },
-    repeatBuyerConcentration: {
-      value: repeatBuyerConcentration,
+    repeatBuyerRate: {
+      value: repeatBuyerRate,
       status: repeatBuyerStatus,
       formula: "1 - (unique_buyers / identifiable_buyer_sales)",
     },
