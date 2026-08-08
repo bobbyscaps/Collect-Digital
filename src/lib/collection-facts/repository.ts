@@ -54,6 +54,7 @@ export interface UpsertCollectionMarketSnapshotInput
   nearFloorOfferValueNative?: number | null;
   activeOfferCount?: number | null;
   activeListingCount?: number | null;
+  listedPct?: number | null;
   totalSupply?: number | null;
   holderCount?: number | null;
 }
@@ -489,6 +490,7 @@ export function createInMemoryCollectionFactsRepository(): CollectionFactsReposi
           nearFloorOfferValueNative: snapshot.nearFloorOfferValueNative ?? null,
           activeOfferCount: snapshot.activeOfferCount ?? null,
           activeListingCount: snapshot.activeListingCount ?? null,
+          listedPct: snapshot.listedPct ?? null,
           totalSupply: snapshot.totalSupply ?? null,
           holderCount: snapshot.holderCount ?? null,
           createdAt: existing?.createdAt ?? timestamp,

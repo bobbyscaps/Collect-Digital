@@ -29,6 +29,11 @@ export interface NormalizedCollection {
   sales: number;
   liquidity: number;
   listedPercent: number;
+  listedCount?: number | null;
+  supply?: number | null;
+  traitCategoryCount?: number | null;
+  distinctTraitValueCount?: number | null;
+  oneOfOneAssetCount?: number | null;
   volume: number;
   metadata: ProviderCollectionMetadata;
   provider: ProviderName;
@@ -53,6 +58,15 @@ export interface NormalizedOffer {
 export interface NormalizedSale {
   tokenId: string;
   priceEth: number;
+  chainNamespace?: string;
+  contractAddress?: string | null;
+  transactionHash?: string | null;
+  logIndex?: number | null;
+  eventIndex?: number | null;
+  buyerAddress?: string | null;
+  sellerAddress?: string | null;
+  currencySymbol?: string | null;
+  sourceSaleId?: string | null;
   marketplace?: string;
   txHash?: string;
   soldAt?: string;
